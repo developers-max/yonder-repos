@@ -1,3 +1,0 @@
-[submodule "yonder-agent"]
-	path = yonder-agent
-	url = git@github.com:developers-max/yonder-agent.git
