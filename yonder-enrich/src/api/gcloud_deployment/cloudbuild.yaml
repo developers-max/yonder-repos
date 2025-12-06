@@ -1,0 +1,52 @@
+# Google Cloud Build configuration for Yonder Enrichment API
+# Automated deployment to Cloud Run with Secret Manager integration
+
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/yonder-enrich/yonder-enrich:latest', '-f', 'src/api/gcloud_deployment/Dockerfile', '.']
+  
+  # Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/yonder-enrich/yonder-enrich:latest']
+  
+  # Deploy to Cloud Run with Secret Manager integration
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'yonder-enrich'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/yonder-enrich/yonder-enrich:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--no-allow-unauthenticated'  # Require authentication
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'  # 5 minutes for long-running enrichments
+      - '--min-instances'
+      - '0'  # Scale to zero when not in use
+      - '--max-instances'
+      - '10'
+      - '--port'
+      - '8080'
+      - '--concurrency'
+      - '80'  # Default concurrent requests per instance
+      # Secrets from Secret Manager (sensitive data)
+      - '--update-secrets'
+      - 'DATABASE_URL=yonder-enrich-database-url:latest,GOOGLE_API_KEY=yonder-enrich-google-api-key:latest'
+      # Non-sensitive environment variables
+      - '--set-env-vars'
+      - 'API_PORT=8080,GEMINI_MODEL=gemini-1.5-pro,DGT_OGC_BASE=https://ogcapi.dgterritorio.gov.pt'
+
+# Configure timeout for the entire build
+timeout: '1200s'  # 20 minutes
+
+# Configure the image to be built
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/yonder-enrich/yonder-enrich:latest'
