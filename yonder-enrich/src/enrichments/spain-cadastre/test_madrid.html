@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test Madrid Cadastre</title>
+  <style>
+    body {
+      margin: 20px;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+    }
+    .test {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    img {
+      border: 2px solid #333;
+      display: block;
+      margin: 10px 0;
+      max-width: 100%;
+    }
+    .url {
+      word-break: break-all;
+      background: #f0f0f0;
+      padding: 10px;
+      font-size: 12px;
+      font-family: monospace;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🗺️ WMS Cadastre Tests</h1>
+  
+  <div class="test">
+    <h2>Test 1: Madrid Center (Sol) - Simple Request</h2>
+    <p><strong>Location:</strong> Puerta del Sol, Madrid (40.4168°N, 3.7038°W)</p>
+    <p><strong>Layers:</strong> CP.CadastralParcel only</p>
+    <div class="url" id="url1"></div>
+    <img id="img1" alt="Loading...">
+  </div>
+  
+  <div class="test">
+    <h2>Test 2: Barcelona (Gothic Quarter)</h2>
+    <p><strong>Location:</strong> Barcelona (41.3851°N, 2.1734°E)</p>
+    <p><strong>Layers:</strong> CP.CadastralParcel + Buildings</p>
+    <div class="url" id="url2"></div>
+    <img id="img2" alt="Loading...">
+  </div>
+  
+  <div class="test">
+    <h2>Test 3: Your Original Location</h2>
+    <p><strong>Location:</strong> Catalunya (41.4988°N, 2.2800°E)</p>
+    <p><strong>Layers:</strong> CP.CadastralParcel only (no transparency)</p>
+    <div class="url" id="url3"></div>
+    <img id="img3" alt="Loading...">
+  </div>
+  
+  <script>
+    // Test 1: Madrid Sol (EPSG:25830 - UTM 30N)
+    const madridParams = new URLSearchParams({
+      SERVICE: 'WMS',
+      VERSION: '1.1.1',  // Try older version
+      REQUEST: 'GetMap',
+      LAYERS: 'CP.CadastralParcel',
+      SRS: 'EPSG:25830',
+      BBOX: '440200,4474200,440600,4474600',  // 400m x 400m around Sol
+      WIDTH: '800',
+      HEIGHT: '800',
+      FORMAT: 'image/png',
+      STYLES: ''
+    });
+    const url1 = `http://ovc.catastro.meh.es/cartografia/INSPIRE/spadgcwms.aspx?${madridParams}`;
+    document.getElementById('url1').textContent = url1;
+    document.getElementById('img1').src = url1;
+    
+    // Test 2: Barcelona Gothic Quarter (EPSG:25831 - UTM 31N)
+    const barcelonaParams = new URLSearchParams({
+      SERVICE: 'WMS',
+      VERSION: '1.1.1',
+      REQUEST: 'GetMap',
+      LAYERS: 'CP.CadastralParcel,BU.Building',
+      SRS: 'EPSG:25831',
+      BBOX: '430700,4581200,431100,4581600',  // 400m x 400m
+      WIDTH: '800',
+      HEIGHT: '800',
+      FORMAT: 'image/png',
+      STYLES: ''
+    });
+    const url2 = `http://ovc.catastro.meh.es/cartografia/INSPIRE/spadgcwms.aspx?${barcelonaParams}`;
+    document.getElementById('url2').textContent = url2;
+    document.getElementById('img2').src = url2;
+    
+    // Test 3: Original location (EPSG:25831)
+    const originalParams = new URLSearchParams({
+      SERVICE: 'WMS',
+      VERSION: '1.1.1',
+      REQUEST: 'GetMap',
+      LAYERS: 'CP.CadastralParcel',
+      SRS: 'EPSG:25831',
+      BBOX: '439755,4594229,440056,4594529',  // Original coords
+      WIDTH: '800',
+      HEIGHT: '800',
+      FORMAT: 'image/png',
+      TRANSPARENT: 'FALSE',  // No transparency
+      BGCOLOR: '0xFFFFFF',
+      STYLES: ''
+    });
+    const url3 = `http://ovc.catastro.meh.es/cartografia/INSPIRE/spadgcwms.aspx?${originalParams}`;
+    document.getElementById('url3').textContent = url3;
+    document.getElementById('img3').src = url3;
+    
+    console.log('Testing 3 different locations...');
+    console.log('Madrid:', url1);
+    console.log('Barcelona:', url2);
+    console.log('Original:', url3);
+  </script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+# Cloud Build ignore file
+# This overrides .gitignore for Cloud Build uploads
+# We need package-lock.json for npm ci in Docker build
+
+# Exclude large/unnecessary files
+node_modules/
+dist/
+.git/
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files (not needed for production build)
+tests/
+**/*.test.ts
+**/*.spec.ts
+coverage/
+
+# Documentation (not needed for build)
+*.md
+!README.md
+
+# Data files (can be large)
+outputs/
+data/
+*.csv
+*.json.gz
+*.parquet
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IMPORTANT: DO NOT ignore package-lock.json - needed for npm ci
+# !package-lock.json is commented because we want it included

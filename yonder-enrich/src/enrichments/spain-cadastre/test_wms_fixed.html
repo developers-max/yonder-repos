@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>WMS Test - Fixed BBOX</title>
+  <style>
+    body {
+      margin: 20px;
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+    }
+    .test-card {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h2 {
+      margin-top: 0;
+      color: #333;
+    }
+    .location {
+      background: #e3f2fd;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    img {
+      width: 100%;
+      max-width: 800px;
+      border: 2px solid #333;
+      display: block;
+      margin: 15px 0;
+      background: #fff;
+    }
+    .loading {
+      color: #666;
+      font-style: italic;
+    }
+    .url-box {
+      background: #263238;
+      color: #4fc3f7;
+      padding: 12px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      word-break: break-all;
+      margin: 10px 0;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .success {
+      color: #4caf50;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>🗺️ Spanish Cadastre WMS - Fixed Version Test</h1>
+  
+  <div class="test-card">
+    <h2>✅ Madrid (Puerta del Sol)</h2>
+    <div class="location">
+      <strong>📍 Location:</strong> 40.4168°N, 3.7038°W<br>
+      <strong>🏛️ Area:</strong> Historic center of Madrid<br>
+      <strong>🗂️ Projection:</strong> EPSG:25830 (UTM 30N)<br>
+      <strong>📦 Layers:</strong> Cadastral Parcels + Buildings
+    </div>
+    <div class="url-box" id="madridUrl"></div>
+    <img id="madridImg" alt="Loading Madrid cadastre map..." onload="imageLoaded('Madrid')" onerror="imageError('Madrid')">
+    <p class="loading" id="madridStatus">⏳ Loading...</p>
+  </div>
+  
+  <div class="test-card">
+    <h2>✅ Your Original Location (Catalunya)</h2>
+    <div class="location">
+      <strong>📍 Location:</strong> 41.4988°N, 2.2800°E<br>
+      <strong>🗂️ Projection:</strong> EPSG:25831 (UTM 31N)<br>
+      <strong>📦 Layers:</strong> Cadastral Parcels only
+    </div>
+    <div class="url-box" id="catalunyaUrl"></div>
+    <img id="catalunyaImg" alt="Loading Catalunya cadastre map..." onload="imageLoaded('Catalunya')" onerror="imageError('Catalunya')">
+    <p class="loading" id="catalunyaStatus">⏳ Loading...</p>
+  </div>
+  
+  <script>
+    function imageLoaded(name) {
+      document.getElementById(name.toLowerCase() + 'Status').innerHTML = 
+        '<span class="success">✅ Image loaded successfully!</span>';
+    }
+    
+    function imageError(name) {
+      document.getElementById(name.toLowerCase() + 'Status').innerHTML = 
+        '❌ <strong style="color:#f44336">Failed to load image from WMS service</strong>';
+    }
+    
+    // Madrid - from the successful test
+    const madridUrl = 'http://ovc.catastro.meh.es/cartografia/INSPIRE/spadgcwms.aspx?' + new URLSearchParams({
+      SERVICE: 'WMS',
+      VERSION: '1.1.1',
+      REQUEST: 'GetMap',
+      LAYERS: 'CP.CadastralParcel,BU.Building',
+      SRS: 'EPSG:25830',
+      BBOX: '440140.458,4474107.382,440440.458,4474407.382',
+      WIDTH: '800',
+      HEIGHT: '800',
+      FORMAT: 'image/png',
+      TRANSPARENT: 'false',
+      STYLES: ''
+    });
+    
+    document.getElementById('madridUrl').textContent = madridUrl;
+    document.getElementById('madridImg').src = madridUrl;
+    
+    // Catalunya - your original location
+    const catalunyaUrl = 'http://ovc.catastro.meh.es/cartografia/INSPIRE/spadgcwms.aspx?' + new URLSearchParams({
+      SERVICE: 'WMS',
+      VERSION: '1.1.1',
+      REQUEST: 'GetMap',
+      LAYERS: 'CP.CadastralParcel',
+      SRS: 'EPSG:25831',
+      BBOX: '439755.481,4594228.975,440055.481,4594528.975',
+      WIDTH: '800',
+      HEIGHT: '800',
+      FORMAT: 'image/png',
+      TRANSPARENT: 'false',
+      STYLES: ''
+    });
+    
+    document.getElementById('catalunyaUrl').textContent = catalunyaUrl;
+    document.getElementById('catalunyaImg').src = catalunyaUrl;
+    
+    console.log('🗺️ Testing WMS images...');
+    console.log('Madrid URL:', madridUrl);
+    console.log('Catalunya URL:', catalunyaUrl);
+  </script>
+</body>
+</html>
