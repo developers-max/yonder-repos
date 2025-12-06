@@ -138,13 +138,14 @@ export async function enrichCRUSZoning() {
 
           const payload = await getCRUSZoningForPoint(lon, lat);
           const zoning: any = {
-            label: payload?.label,
-            picked_field: payload?.picked_field,
-            source: 'DGT CRUS (OGC API via lookup)',
+            label: payload?.designation,
+            category: payload?.category,
+            land_class: payload?.land_class,
+            source: payload?.source || 'DGT CRUS (OGC API via lookup)',
             typename: payload?.collection_id,
-            srs: 'EPSG:4326',
-            feature_count: payload?.feature_count ?? 0,
-            sample_properties: payload?.properties || {},
+            srs: payload?.srs || 'EPSG:4326',
+            municipality: payload?.municipality,
+            sample_properties: payload?.raw_properties || {},
           };
 
           // Optional: LLM-powered English translation of zoning label
