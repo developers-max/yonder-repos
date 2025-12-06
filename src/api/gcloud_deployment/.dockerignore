@@ -1,0 +1,57 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+coverage/
+.nyc_output/
+*.test.ts
+*.spec.ts
+test/
+tests/
+
+# Documentation (not needed in container)
+*.md
+!README.md
+docs/
+src/api/doc/
+src/api/examples/
+
+# Scripts
+deploy.sh
+setup-secrets.sh
+test-docker-build.sh
+
+# Cloud
+cloudbuild.yaml
+.gcloud/
+
+# Outputs and temp files
+outputs/
+temp/
+tmp/
