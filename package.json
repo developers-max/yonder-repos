@@ -1,0 +1,21 @@
+{
+  "name": "yonder-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Yonder Monorepo - Plot enrichment and application platform",
+  "scripts": {
+    "dev:app": "pnpm --filter yonder dev",
+    "dev:enrich": "pnpm --filter yonder-enrich dev",
+    "dev:agent": "pnpm --filter yonder-agent dev",
+    "build": "pnpm -r build",
+    "build:ts": "pnpm --filter '!yonder-agent' -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:push": "pnpm --filter yonder db:push",
+    "agent:migrate": "pnpm --filter yonder-agent migrate:up",
+    "agent:embeddings": "pnpm --filter yonder-agent embeddings"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

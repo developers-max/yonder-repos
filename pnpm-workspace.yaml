@@ -1,0 +1,5 @@
+packages:
+  - "yonder-app/yonder"
+  - "yonder-enrich"
+  - "yonder-agent"
+  - "packages/*"

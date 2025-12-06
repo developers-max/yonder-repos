@@ -1,0 +1,9 @@
+[submodule "yonder-agent"]
+	path = yonder-agent
+	url = git@github.com:developers-max/yonder-agent.git
+[submodule "yonder-app"]
+	path = yonder-app
+	url = git@github.com:minimum-devs/yonder-app.git
+[submodule "yonder-enrich"]
+	path = yonder-enrich
+	url = git@github.com:setondji-mn/yonder-enrich.git
