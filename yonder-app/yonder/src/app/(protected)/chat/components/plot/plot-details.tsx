@@ -410,7 +410,6 @@ export default function PlotDetails({
                         </div>
                       )}
 
-i
                       {firstRealtor && (
                         <div className="border border-gray-200 rounded-xl p-4 md:w-1/4">
                           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Contact Realtor</div>

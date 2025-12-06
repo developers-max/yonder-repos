@@ -1,15 +1,31 @@
 # Yonder Enrich
 
-Service to load, enrich, and expose plot data via Postgres. Enrichments include amenities (OSM), municipalities (reverse geocoding), CRUS zoning, and realtor links.
+Plot enrichment service for the Yonder platform. Enriches real estate plots with:
+
+- **Amenities**: Nearby points of interest from OpenStreetMap
+- **Municipalities**: Reverse geocoding to link plots to administrative regions
+- **CRUS Zoning**: Portuguese land use classification (DGT API)
+- **Realtor Links**: Match plots to known real estate agents
+
+## Part of Yonder Monorepo
+
+This package is part of the [yonder-repos](../README.md) monorepo.
 
 ## Setup
 
-- Node.js 18+
-- Postgres (or Supabase Postgres). Provide a connection string via `DATABASE_URL`.
-- Install deps:
-  ```bash
-  npm install
-  ```
+### Prerequisites
+
+- Node.js 20+
+- pnpm 10+
+- PostgreSQL database
+
+### Installation
+
+From the monorepo root:
+
+```bash
+pnpm install
+```
 
 ## Environment variables
 
@@ -35,52 +51,59 @@ Materialized views (see below) expose unified read-only relations:
 
 ## Commands
 
-- `npm run start` — Interactive CLI (`src/index.ts`).
-- `npm run api` — Start the REST API server for location enrichment.
-- `npm run dev` — Dev mode (auto-restart) for the CLI.
-- `npm run build` — Compile TypeScript (tsc).
-- `npm run test` — Run tests.
+Run from this directory or use `pnpm --filter yonder-enrich <script>` from monorepo root.
 
-Enrichment scripts (non-interactive entrypoints):
-- `npm run amenities` — Enrich amenities around plots from `plots_stage`. Writes to `enriched_plots_stage`.
-- `npm run municipalities` — Link plots to municipalities via reverse geocoding. Writes `municipality_id` in `enriched_plots_stage`.
-- `npm run combined` — Runs amenities + municipality together and marks `plots_stage.enriched = true`.
-- `npm run crus-zoning` — Fetch CRUS zoning for plots and merge into `enriched_plots_stage.enrichment_data.zoning`.
+| Command | Description |
+|---------|-------------|
+| `pnpm start` | Interactive CLI |
+| `pnpm dev` | Dev mode with auto-restart |
+| `pnpm build` | Compile TypeScript |
+| `pnpm test` | Run tests |
+| `pnpm api` | Start REST API server |
 
-ETL scripts:
-- `npm run plots-loader` — Load plot candidates from JSON files under `OUTPUTS_DIR` into `plots_stage`. Truncates `plots_stage` before load.
-- `npm run plots-realtors` — Parse outputs and link plots to known realtors into `plots_stage_realtors`.
+### Enrichment Scripts
 
-Materialized views:
-- `npm run mviews:create` — Create `public.plots` and `public.enriched_plots` as materialized views.
-  - If relations named `plots`/`enriched_plots` exist, they are renamed to `*_backup_<timestamp>` and the MVs are created from those backups (so they display the existing data).
-  - Indexes created:
-    - `plots(id)` unique, `plots(enriched, id)`, partial `plots(id) WHERE enriched=false`
-    - `enriched_plots(id)` unique, `enriched_plots(municipality_id)`, GIN on `enrichment_data`
-- `npm run mviews:refresh` — Recreate MVs to source from staging tables (`plots_stage`, `enriched_plots_stage`) and reapply indexes.
+| Command | Description |
+|---------|-------------|
+| `pnpm amenities` | Enrich plots with nearby amenities (OSM) |
+| `pnpm municipalities` | Link plots to municipalities via geocoding |
+| `pnpm combined` | Run amenities + municipalities together |
+| `pnpm crus-zoning` | Fetch CRUS zoning data (Portugal only) |
 
-## Typical workflow
+### ETL Scripts
 
-1. Prepare inputs under `./outputs` (or point `OUTPUTS_DIR`).
+| Command | Description |
+|---------|-------------|
+| `pnpm plots-loader` | Load plots from JSON files into staging |
+| `pnpm plots-realtors` | Link plots to realtors |
+
+### Materialized Views
+
+| Command | Description |
+|---------|-------------|
+| `pnpm mviews:create` | Create materialized views (first time) |
+| `pnpm mviews:refresh` | Refresh views from staging tables |
+
+## Typical Workflow
+
+1. Prepare inputs under `./outputs` (or set `OUTPUTS_DIR`)
 2. Load staging plots:
    ```bash
-   npm run plots-loader
+   pnpm plots-loader
    ```
-3. Optional: link plots to realtors from outputs:
+3. Optional - link plots to realtors:
    ```bash
-   npm run plots-realtors
+   pnpm plots-realtors
    ```
-4. Run enrichments (choose one or sequentially):
+4. Run enrichments:
    ```bash
-   npm run amenities
-   npm run municipalities
-   npm run combined
-   npm run crus-zoning
+   pnpm combined        # amenities + municipalities
+   pnpm crus-zoning     # Portugal zoning data
    ```
-5. Create or refresh materialized views for consumers:
+5. Create/refresh materialized views:
    ```bash
-   npm run mviews:create   # first time (preserves existing relations as backups)
-   npm run mviews:refresh  # later runs to point to staging sources
+   pnpm mviews:create   # first time
+   pnpm mviews:refresh  # subsequent runs
    ```
 
 ## API Server
@@ -91,7 +114,7 @@ The enrichment service includes a REST API that automatically runs all applicabl
 
 **Quick Start:**
 ```bash
-npm run api
+pnpm api
 ```
 
 The API server provides:
