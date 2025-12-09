@@ -1,0 +1,69 @@
+# .dockerignore for yonder-enrich Cloud Run deployment
+# This file is used when building from the monorepo root
+
+# Node modules (will be installed fresh in Docker)
+**/node_modules/
+npm-debug.log
+yarn-error.log
+.npm
+.pnpm-store/
+
+# Build outputs (will be built in Docker)
+**/dist/
+**/build/
+*.log
+
+# Environment files (secrets managed by Cloud Run)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+**/.DS_Store
+
+# Testing
+**/coverage/
+**/.nyc_output/
+**/*.test.ts
+**/*.spec.ts
+**/test/
+**/tests/
+
+# Documentation
+**/*.md
+**/docs/
+
+# Deployment scripts (not needed in image)
+**/deploy.sh
+**/setup-secrets.sh
+**/test-docker-build.sh
+**/cloudbuild.yaml
+.gcloud/
+
+# Outputs and temp files
+**/outputs/
+**/temp/
+**/tmp/
+**/references/
+**/examples/
+
+# yonder-app (not needed for yonder-enrich deployment)
+yonder-app/
+
+# Keep essential files
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!yonder-enrich/
+!packages/yonder-persistence/

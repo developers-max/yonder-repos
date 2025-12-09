@@ -25,8 +25,9 @@ export type GetProjectContextResult = ToolResult<{
 
 export const getProjectContextTool = tool({
   description: 'Get the current project context including selected plot, current stage, and search filters. Use when you need to understand the current project state.',
+  // Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
   parameters: z.object({
-    includeDetails: z.boolean().optional().default(false).describe('Whether to include detailed project information')
+    includeDetails: z.boolean().nullable().describe('Whether to include detailed project information (default: false)')
   }),
   execute: async ({ }): Promise<GetProjectContextResult> => {
     try {

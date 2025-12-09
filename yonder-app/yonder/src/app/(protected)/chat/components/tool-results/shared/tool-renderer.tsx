@@ -14,6 +14,8 @@ import { ProjectProgressChecklist } from '../project/project-progress-checklist'
 import type { GetProjectProgressResult } from '@/lib/ai/tools/get-project-progress';
 import { GenerateReportResultComponent } from '../project/generate-report-result';
 import type { GenerateReportResult } from '@/lib/ai/tools/generate-report';
+import { LayerInfoResultComponent } from '../layer/layer-info-result';
+import type { GetLayerInfoResult } from '@/lib/ai/tools/get-layer-info';
 
 interface ToolRendererProps {
   toolName: string;
@@ -101,6 +103,13 @@ export function ToolRenderer({
     case 'getAcquisitionSteps':
       // This tool should not show any UI
       return null;
+
+    case 'getLayerInfo':
+      return (
+        <LayerInfoResultComponent
+          result={result as GetLayerInfoResult}
+        />
+      );
 
     default:
       return (

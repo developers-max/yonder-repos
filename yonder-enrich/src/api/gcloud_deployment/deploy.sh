@@ -94,11 +94,15 @@ echo -e "${YELLOW}⏳ This may take several minutes...${NC}"
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-# Get the project root (3 levels up from src/api/gcloud_deployment)
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../.." && pwd )"
+# Get the yonder-enrich root (3 levels up from src/api/gcloud_deployment)
+YONDER_ENRICH_ROOT="$( cd "$SCRIPT_DIR/../../.." && pwd )"
+# Get the MONOREPO root (one more level up)
+MONOREPO_ROOT="$( cd "$YONDER_ENRICH_ROOT/.." && pwd )"
 
-# Change to project root and run the build
-cd "$PROJECT_ROOT" && gcloud builds submit --config src/api/gcloud_deployment/cloudbuild.yaml --region $REGION
+echo -e "${YELLOW}📁 Building from monorepo root: $MONOREPO_ROOT${NC}"
+
+# Change to monorepo root and run the build
+cd "$MONOREPO_ROOT" && gcloud builds submit --config yonder-enrich/src/api/gcloud_deployment/cloudbuild.yaml --region $REGION
 
 # Get the service URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format="value(status.url)")
@@ -150,5 +154,7 @@ echo -e "${YELLOW}📖 API Documentation (requires authentication):${NC}"
 echo -e "   GET  ${SERVICE_URL}/health"
 echo -e "   GET  ${SERVICE_URL}/api/enrich/info"
 echo -e "   POST ${SERVICE_URL}/api/enrich/location"
+echo -e "   GET  ${SERVICE_URL}/api/layers?lat=38.7&lng=-9.1&country=PT"
+echo -e "   POST ${SERVICE_URL}/api/layers"
 echo ""
 echo -e "${GREEN}🎉 Your Yonder Enrichment API is now live and secured on Google Cloud!${NC}"

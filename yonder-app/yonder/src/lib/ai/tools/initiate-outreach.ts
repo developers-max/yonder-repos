@@ -6,22 +6,23 @@ import {
 } from './types';
 
 // Simple schema for outreach - just basic filters
+// Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
 export const initiateOutreachSchema = z.object({
-  latitude: z.number().nullish().describe('Center latitude for location search (optional)'),
-  longitude: z.number().nullish().describe('Center longitude for location search (optional)'),
-  radiusKm: z.number().optional().describe('Search radius in kilometers'),
-  minPrice: z.number().optional().describe('Minimum price in euros'),
-  maxPrice: z.number().optional().describe('Maximum price in euros'),
-  minSize: z.number().optional().describe('Minimum size in square meters'),
-  maxSize: z.number().optional().describe('Maximum size in square meters'),
-  maxDistanceToBeach: z.number().optional().describe('Maximum distance to beach in meters'),
-  maxDistanceToCafe: z.number().optional().describe('Maximum distance to café in meters'),
-  maxDistanceToSupermarket: z.number().optional().describe('Maximum distance to supermarket in meters'),
-  maxDistanceToPublicTransport: z.number().optional().describe('Maximum distance to public transport in meters'),
-  maxDistanceToRestaurant: z.number().optional().describe('Maximum distance to restaurant in meters'),
-  maxDistanceToMainTown: z.number().optional().describe('Maximum distance to main town in meters'),
-  sortBy: z.enum(['price', 'size', 'distance']).optional().describe('Sort results by price, size, or distance'),
-  sortOrder: z.enum(['asc', 'desc']).optional().describe('Sort order: ascending or descending')
+  latitude: z.number().nullable().describe('Center latitude for location search'),
+  longitude: z.number().nullable().describe('Center longitude for location search'),
+  radiusKm: z.number().nullable().describe('Search radius in kilometers'),
+  minPrice: z.number().nullable().describe('Minimum price in euros'),
+  maxPrice: z.number().nullable().describe('Maximum price in euros'),
+  minSize: z.number().nullable().describe('Minimum size in square meters'),
+  maxSize: z.number().nullable().describe('Maximum size in square meters'),
+  maxDistanceToBeach: z.number().nullable().describe('Maximum distance to beach in meters'),
+  maxDistanceToCafe: z.number().nullable().describe('Maximum distance to café in meters'),
+  maxDistanceToSupermarket: z.number().nullable().describe('Maximum distance to supermarket in meters'),
+  maxDistanceToPublicTransport: z.number().nullable().describe('Maximum distance to public transport in meters'),
+  maxDistanceToRestaurant: z.number().nullable().describe('Maximum distance to restaurant in meters'),
+  maxDistanceToMainTown: z.number().nullable().describe('Maximum distance to main town in meters'),
+  sortBy: z.enum(['price', 'size', 'distance']).nullable().describe('Sort results by price, size, or distance'),
+  sortOrder: z.enum(['asc', 'desc']).nullable().describe('Sort order: ascending or descending')
 });
 
 export type InitiateOutreachParams = z.infer<typeof initiateOutreachSchema>;

@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { enrichLocation, LocationEnrichmentRequest, LocationEnrichmentResponse } from './location-enrichment';
+import { queryAllLayers, LayerQueryOptions } from '../layers';
 
 dotenv.config();
 
@@ -111,6 +112,114 @@ app.post('/api/enrich/location', async (req: Request, res: Response) => {
   }
 });
 
+// Layer query endpoint - query geographic layers for a point or polygon
+app.get('/api/layers', async (req: Request, res: Response) => {
+  try {
+    const lat = parseFloat(req.query.lat as string);
+    const lng = parseFloat(req.query.lng as string);
+    const country = ((req.query.country as string) || 'PT').toUpperCase() as 'PT' | 'ES';
+    const areaParam = req.query.area as string;
+    const areaM2 = areaParam ? parseFloat(areaParam) : undefined;
+
+    // Validate coordinates
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({
+        error: 'Invalid coordinates',
+        message: 'Provide lat and lng as numbers',
+        example: '/api/layers?lat=38.7&lng=-9.1&country=PT'
+      });
+    }
+
+    // Validate country
+    if (country !== 'PT' && country !== 'ES') {
+      return res.status(400).json({
+        error: 'Invalid country',
+        message: 'Use PT (Portugal) or ES (Spain)'
+      });
+    }
+
+    // Validate area if provided
+    if (areaM2 !== undefined && (isNaN(areaM2) || areaM2 <= 0)) {
+      return res.status(400).json({
+        error: 'Invalid area',
+        message: 'Provide a positive number in square meters'
+      });
+    }
+
+    console.log(`\n=== Layer Query ===`);
+    console.log(`Coordinates: ${lat}, ${lng}`);
+    console.log(`Country: ${country}`);
+    if (areaM2) console.log(`Area: ${areaM2} m²`);
+
+    const options: LayerQueryOptions = { lat, lng, country, areaM2 };
+    const result = await queryAllLayers(options);
+
+    console.log(`Found ${result.layers.filter(l => l.found).length}/${result.layers.length} layers`);
+
+    res.json(result);
+
+  } catch (error: any) {
+    console.error('Error processing layer query:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message || 'An unexpected error occurred',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Layer query endpoint - POST for polygon-based queries
+app.post('/api/layers', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng, country = 'PT', areaM2, polygon } = req.body;
+
+    // Validate coordinates
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({
+        error: 'Invalid coordinates',
+        message: 'lat and lng must be numbers',
+        example: { lat: 38.7, lng: -9.1, country: 'PT' }
+      });
+    }
+
+    // Validate country
+    const countryCode = country.toUpperCase() as 'PT' | 'ES';
+    if (countryCode !== 'PT' && countryCode !== 'ES') {
+      return res.status(400).json({
+        error: 'Invalid country',
+        message: 'Use PT (Portugal) or ES (Spain)'
+      });
+    }
+
+    console.log(`\n=== Layer Query (POST) ===`);
+    console.log(`Coordinates: ${lat}, ${lng}`);
+    console.log(`Country: ${countryCode}`);
+    if (areaM2) console.log(`Area: ${areaM2} m²`);
+    if (polygon) console.log(`Polygon vertices: ${polygon.coordinates?.[0]?.length || 0}`);
+
+    const options: LayerQueryOptions = { 
+      lat, 
+      lng, 
+      country: countryCode, 
+      areaM2,
+      polygon 
+    };
+    const result = await queryAllLayers(options);
+
+    console.log(`Found ${result.layers.filter(l => l.found).length}/${result.layers.length} layers`);
+
+    res.json(result);
+
+  } catch (error: any) {
+    console.error('Error processing layer query:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message || 'An unexpected error occurred',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Get enrichment documentation
 app.get('/api/enrich/info', (req: Request, res: Response) => {
   res.json({
@@ -175,7 +284,9 @@ app.use((req: Request, res: Response) => {
     available_endpoints: [
       'GET /health',
       'GET /api/enrich/info',
-      'POST /api/enrich/location'
+      'POST /api/enrich/location',
+      'GET /api/layers?lat={lat}&lng={lng}&country={PT|ES}',
+      'POST /api/layers'
     ]
   });
 });
@@ -200,6 +311,8 @@ if (require.main === module) {
     console.log(`   GET  http://localhost:${PORT}/health`);
     console.log(`   GET  http://localhost:${PORT}/api/enrich/info`);
     console.log(`   POST http://localhost:${PORT}/api/enrich/location`);
+    console.log(`   GET  http://localhost:${PORT}/api/layers?lat=38.7&lng=-9.1&country=PT`);
+    console.log(`   POST http://localhost:${PORT}/api/layers`);
     console.log(`\n📖 Documentation: See src/api/doc/ for details`);
     console.log(`\n✨ Ready to enrich locations!\n`);
   });

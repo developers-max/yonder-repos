@@ -131,10 +131,11 @@ export const askMunicipalPlanningTool = tool({
   
   Currently supported: Alella (Spain). Other municipalities will return no documents available.`,
   
+  // Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
   parameters: z.object({
     question: z.string().describe('The question about municipal planning regulations'),
-    municipalityName: z.string().optional().describe('Municipality name (optional if plot context is available)'),
-    plotId: z.string().optional().describe('Plot ID to get municipality from context (optional)'),
+    municipalityName: z.string().nullable().describe('Municipality name (null if plot context is available)'),
+    plotId: z.string().nullable().describe('Plot ID to get municipality from context (null if not needed)'),
   }),
   
   execute: async ({ question, municipalityName, plotId: explicitPlotId }): Promise<MunicipalPlanningQAResult> => {

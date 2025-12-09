@@ -22,8 +22,9 @@ export type GetProjectProgressResult = ToolResult<{
 
 export const getProjectProgressTool = tool({
   description: 'Get the current progress of the project including completed steps and milestones. Use when users ask about project status or progress.',
+  // Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
   parameters: z.object({
-    projectContext: z.string().optional().describe('Optional context about what aspect of progress to focus on')
+    projectContext: z.string().nullable().describe('Context about what aspect of progress to focus on, or null')
   }),
   execute: async ({ }): Promise<GetProjectProgressResult> => {
     try {

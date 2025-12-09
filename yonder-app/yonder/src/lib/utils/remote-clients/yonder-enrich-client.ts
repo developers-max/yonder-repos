@@ -45,6 +45,45 @@ export interface LocationEnrichmentResponse {
   error?: string;
 }
 
+// Layer Query Types
+export interface LayerResult {
+  layerId: string;
+  layerName: string;
+  found: boolean;
+  data?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface BoundingBox {
+  minLng: number;
+  minLat: number;
+  maxLng: number;
+  maxLat: number;
+}
+
+export interface GeoJSONPolygon {
+  type: 'Polygon';
+  coordinates: number[][][];
+}
+
+export interface LayerQueryRequest {
+  lat: number;
+  lng: number;
+  country?: 'PT' | 'ES';
+  areaM2?: number;
+  polygon?: GeoJSONPolygon;
+}
+
+export interface LayerQueryResponse {
+  coordinates: { lat: number; lng: number };
+  country: 'PT' | 'ES';
+  timestamp: string;
+  layers: LayerResult[];
+  areaM2?: number;
+  boundingBox?: BoundingBox;
+  polygon?: GeoJSONPolygon;
+}
+
 /**
  * Make an authenticated request to the Yonder Enrich API
  */
@@ -124,5 +163,46 @@ export async function getEnrichHealth(): Promise<{
 export async function getEnrichInfo(): Promise<any> {
   return makeEnrichRequest('/api/enrich/info', {
     method: 'GET',
+  });
+}
+
+/**
+ * Query geographic layers for a point (GET request)
+ * @param lat - Latitude
+ * @param lng - Longitude
+ * @param country - Country code (PT or ES)
+ * @param areaM2 - Optional area in square meters for area-based queries
+ */
+export async function queryLayers(
+  lat: number,
+  lng: number,
+  country: 'PT' | 'ES' = 'PT',
+  areaM2?: number
+): Promise<LayerQueryResponse> {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lng: String(lng),
+    country,
+  });
+  
+  if (areaM2 !== undefined) {
+    params.append('area', String(areaM2));
+  }
+  
+  return makeEnrichRequest<LayerQueryResponse>(`/api/layers?${params.toString()}`, {
+    method: 'GET',
+  });
+}
+
+/**
+ * Query geographic layers with polygon (POST request)
+ * @param request - Layer query request with lat, lng, country, and optional polygon/area
+ */
+export async function queryLayersWithPolygon(
+  request: LayerQueryRequest
+): Promise<LayerQueryResponse> {
+  return makeEnrichRequest<LayerQueryResponse>('/api/layers', {
+    method: 'POST',
+    body: JSON.stringify(request),
   });
 }

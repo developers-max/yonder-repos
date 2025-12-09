@@ -11,7 +11,8 @@ import { getAcquisitionStepsTool } from '../../../lib/ai/tools/get-acquisition-s
 import { getProjectContextTool } from '../../../lib/ai/tools/get-project-context';
 import { generateReportTool } from '../../../lib/ai/tools/generate-report';
 import { askMunicipalPlanningTool } from '../../../lib/ai/tools/ask-municipal-planning';
-import { setToolContext } from '../../../lib/ai/tools/tool-context';
+import { getLayerInfoTool } from '../../../lib/ai/tools/get-layer-info';
+import { setToolContext, type PlotContextData, type GeoJSONPolygon } from '../../../lib/ai/tools/tool-context';
 import { auth } from '@/lib/auth/auth';
 import { headers } from 'next/headers';
 import { appRouter } from '@/server/trpc';
@@ -85,8 +86,65 @@ export async function POST(req: Request) {
       }
     }
 
+    // Fetch plot data if plotId is provided - makes full context available to all tools
+    let plotData: PlotContextData | undefined;
+    if (plotId) {
+      try {
+        const plot = await caller.plots.getPlot({ id: plotId });
+        const enrichmentData = plot.enrichmentData as Record<string, unknown> | null;
+        
+        // Extract polygon from cadastral data if available
+        const cadastralData = enrichmentData?.cadastral as Record<string, unknown> | undefined;
+        const cadastralPolygon = cadastralData?.polygon as GeoJSONPolygon | undefined;
+        
+        // Extract municipality info
+        const municipality = plot.municipality as { id: number; name: string; countryCode?: string } | undefined;
+        
+        // Extract listing coordinates (less accurate)
+        const listingLat = typeof plot.latitude === 'string' ? parseFloat(plot.latitude) : Number(plot.latitude);
+        const listingLng = typeof plot.longitude === 'string' ? parseFloat(plot.longitude) : Number(plot.longitude);
+        
+        // Extract real/accurate coordinates if available (from enrichment)
+        const plotWithReal = plot as { real_latitude?: number | string | null; real_longitude?: number | string | null };
+        const realLat = plotWithReal.real_latitude != null 
+          ? (typeof plotWithReal.real_latitude === 'string' ? parseFloat(plotWithReal.real_latitude) : Number(plotWithReal.real_latitude))
+          : undefined;
+        const realLng = plotWithReal.real_longitude != null 
+          ? (typeof plotWithReal.real_longitude === 'string' ? parseFloat(plotWithReal.real_longitude) : Number(plotWithReal.real_longitude))
+          : undefined;
+        
+        // Check if we have valid accurate coordinates
+        const hasAccurateCoordinates = realLat !== undefined && realLng !== undefined && 
+          !isNaN(realLat) && !isNaN(realLng);
+        
+        plotData = {
+          id: String(plot.id),
+          latitude: listingLat,
+          longitude: listingLng,
+          realLatitude: hasAccurateCoordinates ? realLat : undefined,
+          realLongitude: hasAccurateCoordinates ? realLng : undefined,
+          hasAccurateCoordinates,
+          price: Number(plot.price),
+          size: plot.size ? Number(plot.size) : null,
+          images: Array.isArray(plot.images) ? (plot.images as string[]) : [],
+          listingTitle: (plot as { title?: string }).title,
+          listingDescription: (plot as { description?: string }).description,
+          polygon: cadastralPolygon,
+          enrichmentData: enrichmentData || undefined,
+          municipality: municipality ? {
+            id: municipality.id,
+            name: municipality.name,
+            countryCode: municipality.countryCode,
+          } : undefined,
+        };
+      } catch (error) {
+        console.warn('[chat] Failed to fetch plot data for context:', error);
+        // Continue without plot data - tools will fetch as needed
+      }
+    }
+
     // Set global context for tools that need authentication
-    setToolContext({ session, user: session.user, chatId, organizationId, plotId });
+    setToolContext({ session, user: session.user, chatId, organizationId, plotId, plotData });
 
     // Build simplified system prompt - context and steps now available via tools
     const systemPrompt = `You are an expert on Portugal real estate with a specialization in finding plots of land for sale throughout Portugal. 
@@ -126,6 +184,8 @@ You have access to specialized tools for helping users find and contact realtors
 ${isAdmin ? `10. **generateReport**: Use when users want to generate a comprehensive property report for a specific plot. Examples: "Generate a report for this plot", "Create a property report", "I need documentation for this land". This creates an interactive component with a download button for the AI-powered report.
 
 11.` : `10.`} **askMunicipalPlanning**: Use when users ask questions about planning and building regulations, zoning laws, building restrictions, or urban development rules for a specific plot or municipality. Examples: "What are the zoning regulations in Alella?", "What are building height restrictions for this plot?", "Tell me about construction permits in this municipality", "What are the land use regulations?". This tool queries official municipal planning documents (PDM/POUM) and returns authoritative answers with source citations. Currently supported: Alella (Spain). Automatically uses municipality from plot context if available, or accepts explicit municipality name.
+
+${isAdmin ? `12.` : `11.`} **getLayerInfo**: Use when users ask about geographic or regulatory layer data for a plot or location. Examples: "What zone is this plot in?", "Is this land protected?", "Is there REN/RAN on this plot?", "What's the land use classification?", "Show cadastral information", "What municipality is this in?". Returns data from cadastre, REN (ecological reserve), RAN (agricultural reserve), municipality, parish, district, NUTS III, land use (COS), Corine Land Cover, built-up areas, and elevation. Automatically uses plot context when available (coordinates and polygon geometry), or accepts explicit coordinates.
 
 TOOL RESPONSE STRUCTURE: All tools return a standardized structure:
 - **filters**: The search criteria that will be applied
@@ -175,7 +235,8 @@ PLOT CONTEXT AVAILABLE: The user is currently viewing a specific plot (ID: ${plo
         getAcquisitionSteps: getAcquisitionStepsTool,
         // generateReport is admin-only
         ...(isAdmin ? { generateReport: generateReportTool } : {}),
-        askMunicipalPlanning: askMunicipalPlanningTool
+        askMunicipalPlanning: askMunicipalPlanningTool,
+        getLayerInfo: getLayerInfoTool
       },
       async onFinish({ response }) {
         // Only save messages if chatId is provided

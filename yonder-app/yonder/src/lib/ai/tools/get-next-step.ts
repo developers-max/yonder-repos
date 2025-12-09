@@ -36,8 +36,9 @@ export type GetNextStepResult = ToolResult<{
 // Tool for getting the next step in the acquisition process
 export const getNextStepTool = tool({
   description: 'Get the next step in the property acquisition process for the current project. Use when users ask about next steps or what to do next.',
+  // Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
   parameters: z.object({
-    projectContext: z.string().optional().describe('Optional context about the current project state')
+    projectContext: z.string().nullable().describe('Context about the current project state, or null')
   }),
   execute: async ({ }): Promise<GetNextStepResult> => {
     try {

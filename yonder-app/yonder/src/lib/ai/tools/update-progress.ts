@@ -28,13 +28,14 @@ export type ProgressUpdateResult = ToolResult<{
 
 export const updateProgressTool = tool({
   description: 'Update project progress when the user indicates they have completed an acquisition milestone. Use this when users mention completing specific steps like getting NIF, signing contracts, getting permits, etc.',
+  // Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
   parameters: z.object({
     completedStepName: z.string().describe('The name/identifier of the process step that was completed (e.g., "nif", "promissory", "permits")'),
     completedStepTitle: z.string().describe('The human-readable title of the completed step (e.g., "Get Portuguese tax number", "Sign CPCV contract")'),
     evidence: z.string().describe('What the user said that indicates completion (e.g., "I got my NIF number", "We signed the CPCV")'),
     confidence: z.enum(['high', 'medium', 'low']).describe('How confident you are that this step was actually completed based on user input'),
-    nextStepName: z.string().optional().describe('The name of the logical next step if there is one (e.g., "legalcheck" after "nif")'),
-    nextStepTitle: z.string().optional().describe('The title of the next step if specified')
+    nextStepName: z.string().nullable().describe('The name of the logical next step if there is one (e.g., "legalcheck" after "nif")'),
+    nextStepTitle: z.string().nullable().describe('The title of the next step if specified')
   }),
   execute: async ({ 
     completedStepName, 
