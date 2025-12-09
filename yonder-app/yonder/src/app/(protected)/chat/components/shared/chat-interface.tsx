@@ -126,6 +126,25 @@ export default function ChatInterface({
     }
   }, [chatId, messages.length, setInput]);
 
+  // Listen for external message requests (e.g., from layer info search)
+  useEffect(() => {
+    const handleSendMessage = (event: CustomEvent<{ message: string }>) => {
+      if (event.detail?.message) {
+        setInput(event.detail.message);
+        // Auto-submit after setting input
+        setTimeout(() => {
+          const form = document.querySelector('form');
+          if (form) {
+            form.requestSubmit();
+          }
+        }, 100);
+      }
+    };
+    
+    window.addEventListener('chatSendMessage', handleSendMessage as EventListener);
+    return () => window.removeEventListener('chatSendMessage', handleSendMessage as EventListener);
+  }, [setInput]);
+
   // Reset plot context inclusion when plotId changes
   useEffect(() => {
     if (plotId) {

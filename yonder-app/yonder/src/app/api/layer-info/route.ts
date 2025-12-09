@@ -1,269 +1,92 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { portugalMunicipalities } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import {
+  queryLayers,
+  queryLayersWithPolygon,
+  type LayerQueryResponse,
+  type GeoJSONPolygon,
+} from '@/lib/utils/remote-clients/yonder-enrich-client';
 
 /**
- * API endpoint to query map layer information at a specific point
- * Returns data from all available layers (cadastre, REN, RAN, etc.)
+ * API endpoint to query map layer information at a specific point, area, or polygon
+ * Proxies requests to the yonder-enrich service which handles all geographic layer queries.
  * 
  * GET /api/layer-info?lat={latitude}&lng={longitude}&country={PT|ES}
+ * GET /api/layer-info?lat={latitude}&lng={longitude}&country={PT|ES}&area={areaM2}
+ * 
+ * POST /api/layer-info
+ * Body: { polygon: GeoJSON Polygon, country: 'PT' | 'ES' }
+ * 
+ * Parameters:
+ * - lat: Latitude of center point
+ * - lng: Longitude of center point  
+ * - country: PT (Portugal) or ES (Spain)
+ * - area: Optional area in square meters
+ * - polygon: GeoJSON Polygon geometry for the plot/parcel shape
  */
 
-interface LayerResult {
-  layerId: string;
-  layerName: string;
-  found: boolean;
-  data?: Record<string, unknown>;
-  error?: string;
+interface PostRequestBody {
+  polygon: GeoJSONPolygon;
+  country?: 'PT' | 'ES';
 }
 
-interface QueryResponse {
-  coordinates: { lat: number; lng: number };
-  country: 'PT' | 'ES';
-  timestamp: string;
-  layers: LayerResult[];
-}
-
-// Generic OGC API query helper
-async function queryOGCCollection(
-  lat: number, 
-  lng: number, 
-  collection: string,
-  layerId: string,
-  layerName: string,
-  propsMapper?: (props: Record<string, unknown>) => Record<string, unknown>
-): Promise<LayerResult> {
-  const delta = 0.0001; // ~10m buffer
-  const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
-  const url = `https://ogcapi.dgterritorio.gov.pt/collections/${collection}/items?bbox=${bbox}&f=json&limit=1`;
+// Validate GeoJSON Polygon
+function isValidPolygon(polygon: unknown): polygon is GeoJSONPolygon {
+  if (!polygon || typeof polygon !== 'object') return false;
+  const p = polygon as Record<string, unknown>;
+  if (p.type !== 'Polygon') return false;
+  if (!Array.isArray(p.coordinates)) return false;
+  if (p.coordinates.length === 0) return false;
   
-  try {
-    const response = await fetch(url, { 
-      signal: AbortSignal.timeout(10000),
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    if (!response.ok) {
-      return { layerId, layerName, found: false, error: `HTTP ${response.status}` };
-    }
-    
-    const data = await response.json();
-    const features = data.features || [];
-    
-    if (features.length === 0) {
-      return { layerId, layerName, found: false };
-    }
-    
-    const props = features[0].properties || {};
-    return {
-      layerId,
-      layerName,
-      found: true,
-      data: propsMapper ? propsMapper(props) : props
-    };
-  } catch (error) {
-    return { 
-      layerId, 
-      layerName, 
-      found: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
+  const ring = p.coordinates[0];
+  if (!Array.isArray(ring) || ring.length < 4) return false; // Min 3 points + closing point
+  
+  // Check each coordinate is [lng, lat]
+  for (const coord of ring) {
+    if (!Array.isArray(coord) || coord.length < 2) return false;
+    if (typeof coord[0] !== 'number' || typeof coord[1] !== 'number') return false;
   }
+  
+  return true;
 }
 
-// Query elevation from Open-Elevation API
-async function queryElevation(lat: number, lng: number): Promise<LayerResult> {
-  const url = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
+// Calculate centroid of a polygon (simple average of vertices)
+function calculatePolygonCentroid(polygon: GeoJSONPolygon): { lat: number; lng: number } {
+  const ring = polygon.coordinates[0]; // Outer ring
+  let sumLng = 0;
+  let sumLat = 0;
+  // Exclude last point (same as first in closed ring)
+  const n = ring.length - 1;
   
-  try {
-    const response = await fetch(url, { 
-      signal: AbortSignal.timeout(10000),
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    if (!response.ok) {
-      return { layerId: 'elevation', layerName: 'Elevation', found: false, error: `HTTP ${response.status}` };
-    }
-    
-    const data = await response.json();
-    const elevation = data.results?.[0]?.elevation;
-    
-    if (elevation === undefined) {
-      return { layerId: 'elevation', layerName: 'Elevation', found: false };
-    }
-    
-    return {
-      layerId: 'elevation',
-      layerName: 'Elevation',
-      found: true,
-      data: {
-        elevationM: elevation,
-        source: 'SRTM/Open-Elevation'
-      }
-    };
-  } catch (error) {
-    return { 
-      layerId: 'elevation', 
-      layerName: 'Elevation', 
-      found: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
+  for (let i = 0; i < n; i++) {
+    sumLng += ring[i][0];
+    sumLat += ring[i][1];
   }
+  
+  return {
+    lng: sumLng / n,
+    lat: sumLat / n,
+  };
 }
 
-// Query Portuguese Cadastre via OGC API
-async function queryPortugueseCadastre(lat: number, lng: number): Promise<LayerResult> {
-  const delta = 0.0001; // ~10m buffer
-  const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
-  const url = `https://ogcapi.dgterritorio.gov.pt/collections/cadastro/items?bbox=${bbox}&f=json&limit=1`;
+// Calculate approximate area of polygon in square meters (using Shoelace formula)
+function calculatePolygonAreaM2(polygon: GeoJSONPolygon, centerLat: number): number {
+  const ring = polygon.coordinates[0];
+  const n = ring.length - 1;
   
-  try {
-    const response = await fetch(url, { 
-      signal: AbortSignal.timeout(10000),
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    if (!response.ok) {
-      return { layerId: 'pt-cadastro', layerName: 'Cadastro Predial', found: false, error: `HTTP ${response.status}` };
-    }
-    
-    const data = await response.json();
-    const features = data.features || [];
-    
-    if (features.length === 0) {
-      return { layerId: 'pt-cadastro', layerName: 'Cadastro Predial', found: false };
-    }
-    
-    const props = features[0].properties || {};
-    return {
-      layerId: 'pt-cadastro',
-      layerName: 'Cadastro Predial',
-      found: true,
-      data: {
-        parcelReference: props.nationalcadastralreference,
-        inspireId: props.inspireid,
-        label: props.label,
-        areaM2: props.areavalue,
-        municipalityCode: props.administrativeunit,
-        validFrom: props.beginlifespanversion,
-      }
-    };
-  } catch (error) {
-    return { 
-      layerId: 'pt-cadastro', 
-      layerName: 'Cadastro Predial', 
-      found: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
+  // Shoelace formula for area in coordinate units
+  let area = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += ring[i][0] * ring[j][1];
+    area -= ring[j][0] * ring[i][1];
   }
-}
-
-// Query Spanish Cadastre via WMS GetFeatureInfo
-async function querySpanishCadastre(lat: number, lng: number): Promise<LayerResult> {
-  // Create a small bbox around the point
-  const delta = 0.001;
-  const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
-  const url = `https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo&QUERY_LAYERS=Catastro&LAYERS=Catastro&INFO_FORMAT=text/plain&X=128&Y=128&WIDTH=256&HEIGHT=256&SRS=EPSG:4326&BBOX=${bbox}`;
+  area = Math.abs(area) / 2;
   
-  try {
-    const response = await fetch(url, { 
-      signal: AbortSignal.timeout(10000),
-      headers: { 'User-Agent': 'Yonder/1.0' }
-    });
-    
-    if (!response.ok) {
-      return { layerId: 'es-cadastro', layerName: 'Catastro', found: false, error: `HTTP ${response.status}` };
-    }
-    
-    const text = await response.text();
-    
-    // Parse the plain text response (Spanish cadastre returns text, not JSON)
-    if (text.includes('error') || text.includes('Error') || !text.includes('Parcela')) {
-      return { layerId: 'es-cadastro', layerName: 'Catastro', found: false };
-    }
-    
-    // Extract parcel reference from text response
-    const refMatch = text.match(/Referencia catastral[:\s]+([A-Z0-9]+)/i);
-    const areaMatch = text.match(/Superficie[:\s]+([\d.,]+)/i);
-    
-    return {
-      layerId: 'es-cadastro',
-      layerName: 'Catastro',
-      found: true,
-      data: {
-        parcelReference: refMatch?.[1] || 'Unknown',
-        rawResponse: text.substring(0, 500), // First 500 chars
-        areaM2: areaMatch ? parseFloat(areaMatch[1].replace(',', '.')) : null,
-      }
-    };
-  } catch (error) {
-    return { 
-      layerId: 'es-cadastro', 
-      layerName: 'Catastro', 
-      found: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
-}
-
-// Query Municipal REN/RAN via ArcGIS Identify
-async function queryMunicipalRenRan(
-  lat: number, 
-  lng: number, 
-  serviceUrl: string, 
-  layerId: string,
-  layerName: string
-): Promise<LayerResult> {
-  // ArcGIS MapServer identify endpoint
-  const identifyUrl = serviceUrl.replace('/export', '/identify');
-  const params = new URLSearchParams({
-    geometry: `${lng},${lat}`,
-    geometryType: 'esriGeometryPoint',
-    sr: '4326',
-    layers: 'all',
-    tolerance: '2',
-    mapExtent: `${lng - 0.01},${lat - 0.01},${lng + 0.01},${lat + 0.01}`,
-    imageDisplay: '256,256,96',
-    returnGeometry: 'false',
-    f: 'json',
-  });
+  // Convert from square degrees to square meters
+  const metersPerDegreeLat = 111320;
+  const metersPerDegreeLng = 111320 * Math.cos(centerLat * Math.PI / 180);
   
-  try {
-    const response = await fetch(`${identifyUrl}?${params}`, { 
-      signal: AbortSignal.timeout(10000) 
-    });
-    
-    if (!response.ok) {
-      return { layerId, layerName, found: false, error: `HTTP ${response.status}` };
-    }
-    
-    const data = await response.json();
-    const results = data.results || [];
-    
-    if (results.length === 0) {
-      return { layerId, layerName, found: false };
-    }
-    
-    // Return first matching result
-    const result = results[0];
-    return {
-      layerId,
-      layerName,
-      found: true,
-      data: {
-        sourceLayer: result.layerName,
-        attributes: result.attributes,
-      }
-    };
-  } catch (error) {
-    return { 
-      layerId, 
-      layerName, 
-      found: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
+  return area * metersPerDegreeLat * metersPerDegreeLng;
 }
 
 export async function GET(request: NextRequest) {
@@ -271,6 +94,8 @@ export async function GET(request: NextRequest) {
   const lat = parseFloat(searchParams.get('lat') || '');
   const lng = parseFloat(searchParams.get('lng') || '');
   const country = (searchParams.get('country') || 'PT').toUpperCase() as 'PT' | 'ES';
+  const areaParam = searchParams.get('area');
+  const areaM2 = areaParam ? parseFloat(areaParam) : undefined;
   
   // Validate coordinates
   if (isNaN(lat) || isNaN(lng)) {
@@ -288,133 +113,97 @@ export async function GET(request: NextRequest) {
     );
   }
   
-  const layers: LayerResult[] = [];
-  
-  if (country === 'PT') {
-    // First query cadastre to get municipality code
-    const cadastreResult = await queryPortugueseCadastre(lat, lng);
-    layers.push(cadastreResult);
-    
-    // Extract municipality code from cadastre result (format: DDCCFF where DD=district, CC=concelho, FF=freguesia)
-    const municipalityCode = cadastreResult.data?.municipalityCode as string | undefined;
-    
-    // Look up municipality by CAOP ID (first 4 digits of municipality code)
-    let municipality: typeof portugalMunicipalities.$inferSelect | undefined;
-    if (municipalityCode) {
-      const caopId = municipalityCode.substring(0, 4);
-      const result = await db.select()
-        .from(portugalMunicipalities)
-        .where(eq(portugalMunicipalities.caopId, caopId))
-        .limit(1);
-      municipality = result[0];
-    }
-    
-    // Query REN/RAN if municipality has verified services
-    if (municipality?.gisVerified && municipality.renService?.url) {
-      const renResult = await queryMunicipalRenRan(
-        lat, lng,
-        municipality.renService.url,
-        'pt-ren',
-        `REN - ${municipality.name}`
-      );
-      layers.push(renResult);
-    } else {
-      layers.push({
-        layerId: 'pt-ren',
-        layerName: 'Reserva Ecológica Nacional',
-        found: false,
-        error: municipality 
-          ? `No REN service available for ${municipality.name}` 
-          : 'Municipality not identified from cadastre',
-      });
-    }
-    
-    if (municipality?.gisVerified && municipality.ranService?.url) {
-      const ranResult = await queryMunicipalRenRan(
-        lat, lng,
-        municipality.ranService.url,
-        'pt-ran',
-        `RAN - ${municipality.name}`
-      );
-      layers.push(ranResult);
-    } else {
-      layers.push({
-        layerId: 'pt-ran',
-        layerName: 'Reserva Agrícola Nacional',
-        found: false,
-        error: municipality 
-          ? `No RAN service available for ${municipality.name}` 
-          : 'Municipality not identified from cadastre',
-      });
-    }
-    
-    // Add municipality info from our database
-    if (municipality) {
-      layers.push({
-        layerId: 'pt-municipality-db',
-        layerName: 'Município (Database)',
-        found: true,
-        data: {
-          name: municipality.name,
-          caopId: municipalityCode?.substring(0, 4),
-          hasRenService: !!municipality.renService,
-          hasRanService: !!municipality.ranService,
-          gisVerified: municipality.gisVerified,
-        }
-      });
-    }
-    
-    // Query additional layers in parallel
-    const additionalQueries = await Promise.all([
-      // Elevation
-      queryElevation(lat, lng),
-      
-      // Administrative boundaries from OGC API
-      queryOGCCollection(lat, lng, 'municipios', 'pt-municipio', 'Município (CAOP)', (props) => ({
-        municipio: props.municipio,
-        distrito: props.distrito_ilha,
-        nuts1: props.nuts1,
-        nuts2: props.nuts2,
-        nuts3: props.nuts3,
-        areaHa: props.area_ha,
-        nFreguesias: props.n_freguesias,
-      })),
-      
-      queryOGCCollection(lat, lng, 'freguesias', 'pt-freguesia', 'Freguesia', (props) => ({
-        freguesia: props.freguesia,
-        municipio: props.municipio,
-        distrito: props.distrito_ilha,
-        areaHa: props.area_ha,
-      })),
-      
-      queryOGCCollection(lat, lng, 'nuts3', 'pt-nuts3', 'NUTS III', (props) => ({
-        nuts3: props.nuts3,
-        nuts2: props.nuts2,
-        nuts1: props.nuts1,
-      })),
-    ]);
-    
-    layers.push(...additionalQueries);
-    
-  } else {
-    // Query Spanish layers in parallel
-    const [cadastreResult, elevationResult] = await Promise.all([
-      querySpanishCadastre(lat, lng),
-      queryElevation(lat, lng),
-    ]);
-    layers.push(cadastreResult, elevationResult);
+  // Validate area if provided
+  if (areaM2 !== undefined && (isNaN(areaM2) || areaM2 <= 0)) {
+    return NextResponse.json(
+      { error: 'Invalid area. Provide a positive number in square meters.' },
+      { status: 400 }
+    );
   }
   
-  const response: QueryResponse = {
-    coordinates: { lat, lng },
-    country,
-    timestamp: new Date().toISOString(),
-    layers,
-  };
+  try {
+    // Call yonder-enrich API via authenticated client
+    const response: LayerQueryResponse = await queryLayers(lat, lng, country, areaM2);
+    
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'public, max-age=300', // Cache for 5 minutes
+      },
+    });
+  } catch (error) {
+    console.error('[layer-info] Error querying layers:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to query layers',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * POST handler for polygon-based queries
+ * Accepts a GeoJSON Polygon and returns layer information for the plot
+ */
+export async function POST(request: NextRequest) {
+  let body: PostRequestBody;
   
-  return NextResponse.json(response, {
-    headers: {
-      'Cache-Control': 'public, max-age=300', // Cache for 5 minutes
-    },
-  });
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: 'Invalid JSON body' },
+      { status: 400 }
+    );
+  }
+  
+  // Validate polygon
+  if (!isValidPolygon(body.polygon)) {
+    return NextResponse.json(
+      { error: 'Invalid polygon. Provide a valid GeoJSON Polygon with at least 3 vertices.' },
+      { status: 400 }
+    );
+  }
+  
+  const polygon = body.polygon;
+  const country = ((body.country || 'PT').toUpperCase()) as 'PT' | 'ES';
+  
+  // Validate country
+  if (country !== 'PT' && country !== 'ES') {
+    return NextResponse.json(
+      { error: 'Invalid country. Use PT or ES.' },
+      { status: 400 }
+    );
+  }
+  
+  // Calculate centroid and area from polygon
+  const centroid = calculatePolygonCentroid(polygon);
+  const areaM2 = calculatePolygonAreaM2(polygon, centroid.lat);
+  
+  try {
+    // Call yonder-enrich API via authenticated client with polygon
+    const response: LayerQueryResponse = await queryLayersWithPolygon({
+      lat: centroid.lat,
+      lng: centroid.lng,
+      country,
+      areaM2: Math.round(areaM2),
+      polygon,
+    });
+    
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'public, max-age=300', // Cache for 5 minutes
+      },
+    });
+  } catch (error) {
+    console.error('[layer-info] Error querying layers with polygon:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to query layers',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
 }

@@ -1,10 +1,11 @@
 # Google Cloud Build configuration for Yonder Enrichment API
 # Automated deployment to Cloud Run with Secret Manager integration
+# NOTE: This must be run from the MONOREPO ROOT (yonder-repos/) not from yonder-enrich/
 
 steps:
-  # Build the Docker image
+  # Build the Docker image from monorepo root
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/yonder-enrich/yonder-enrich:latest', '-f', 'src/api/gcloud_deployment/Dockerfile', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/yonder-enrich/yonder-enrich:latest', '-f', 'yonder-enrich/src/api/gcloud_deployment/Dockerfile', '.']
   
   # Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'

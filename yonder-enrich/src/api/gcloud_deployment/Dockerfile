@@ -1,7 +1,10 @@
 # ==========================================
-# Build Stage: Compile TypeScript
+# Build Stage: Compile TypeScript with pnpm monorepo
 # ==========================================
 FROM node:18-slim AS builder
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
@@ -12,28 +15,44 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files first (better layer caching)
-COPY package*.json ./
-COPY tsconfig.json ./
-COPY tsconfig.prod.json ./
+# Copy root workspace files first (better layer caching)
+COPY package.json ./
+COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
+COPY tsconfig.base.json ./
+
+# Copy yonder-enrich package files
+COPY yonder-enrich/package.json ./yonder-enrich/
+COPY yonder-enrich/tsconfig.json ./yonder-enrich/
+COPY yonder-enrich/tsconfig.prod.json ./yonder-enrich/
+
+# Copy yonder-persistence package (workspace dependency)
+COPY packages/yonder-persistence/ ./packages/yonder-persistence/
 
 # Install ALL dependencies (including devDependencies needed for build)
-RUN npm ci
+RUN pnpm install --frozen-lockfile
 
-# Copy only necessary source code
-COPY src/api/ ./src/api/
-COPY src/enrichments/ ./src/enrichments/
-COPY src/types.ts ./src/types.ts
-COPY src/llm/ ./src/llm/
-COPY src/db/ ./src/db/
+# Build yonder-persistence first (it's a dependency)
+RUN cd packages/yonder-persistence && pnpm build
 
-# Build TypeScript to JavaScript using production config
-RUN npx tsc --project tsconfig.prod.json
+# Copy yonder-enrich source code
+COPY yonder-enrich/src/api/ ./yonder-enrich/src/api/
+COPY yonder-enrich/src/enrichments/ ./yonder-enrich/src/enrichments/
+COPY yonder-enrich/src/layers/ ./yonder-enrich/src/layers/
+COPY yonder-enrich/src/types.ts ./yonder-enrich/src/types.ts
+COPY yonder-enrich/src/llm/ ./yonder-enrich/src/llm/
+COPY yonder-enrich/src/db/ ./yonder-enrich/src/db/
+
+# Build yonder-enrich TypeScript to JavaScript
+RUN cd yonder-enrich && pnpm exec tsc --project tsconfig.prod.json
 
 # ==========================================
 # Production Stage: Run compiled code
 # ==========================================
 FROM node:18-slim
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
@@ -47,20 +66,32 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
-COPY package*.json ./
+# Copy root workspace files
+COPY package.json ./
+COPY pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
+
+# Copy yonder-enrich package.json
+COPY yonder-enrich/package.json ./yonder-enrich/
+
+# Copy yonder-persistence package.json and built dist
+COPY packages/yonder-persistence/package.json ./packages/yonder-persistence/
+COPY --from=builder /app/packages/yonder-persistence/dist ./packages/yonder-persistence/dist
 
 # Install ONLY production dependencies
-RUN npm ci --only=production && npm cache clean --force
+RUN pnpm install --frozen-lockfile --prod
 
-# Copy compiled application from builder stage
-COPY --from=builder /app/dist ./dist
+# Copy compiled yonder-enrich application from builder stage
+COPY --from=builder /app/yonder-enrich/dist ./yonder-enrich/dist
 
 # Copy necessary source files that might be required at runtime
-COPY --from=builder /app/src/api/doc ./src/api/doc
+COPY --from=builder /app/yonder-enrich/src/api/doc ./yonder-enrich/src/api/doc
 
 # Create placeholder .env file (will be overridden by Cloud Run environment/secrets)
 RUN echo "# Environment variables managed by Cloud Run" > .env
+
+# Set working directory to yonder-enrich
+WORKDIR /app/yonder-enrich
 
 # Expose port (Cloud Run will use PORT env var)
 EXPOSE 8080

@@ -6,32 +6,30 @@ import {
 } from './types';
 
 // Schema for generating plot filters based on user queries
+// Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
 export const searchPlotsSchema = z.object({
-  latitude: z.number().optional().describe('Center latitude for location search. REQUIRED when user mentions specific places in Portugal (e.g., Meadela ≈ 41.7400, Lisbon ≈ 38.7223, Porto ≈ 41.1579)'),
-  longitude: z.number().optional().describe('Center longitude for location search. REQUIRED when user mentions specific places in Portugal (e.g., Meadela ≈ -8.8080, Lisbon ≈ -9.1393, Porto ≈ -8.6291)'),
-  radiusKm: z.preprocess(
-    (val) => String(val), // Convert incoming value to string
-    z.enum(['10', '25', '50', '100'])
-  ).optional().default('50').describe('Search radius in kilometers (default: 50km)').transform(val => Number(val)),
-  minPrice: z.number().optional().describe('Minimum price in euros'),
-  maxPrice: z.number().optional().describe('Maximum price in euros'),
-  minSize: z.number().optional().describe('Minimum size in square meters'),
-  maxSize: z.number().optional().describe('Maximum size in square meters'),
-  maxDistanceToBeach: z.number().optional().describe('Maximum distance to beach in meters'),
-  maxDistanceToCafe: z.number().optional().describe('Maximum distance to café in meters'),
-  maxDistanceToSupermarket: z.number().optional().describe('Maximum distance to supermarket in meters'),
-  maxDistanceToPublicTransport: z.number().optional().describe('Maximum distance to public transport in meters'),
-  maxDistanceToRestaurant: z.number().optional().describe('Maximum distance to restaurant in meters'),
-  maxDistanceToMainTown: z.number().optional().describe('Maximum distance to main town in meters'),
+  latitude: z.number().nullable().describe('Center latitude for location search. REQUIRED when user mentions specific places in Portugal (e.g., Meadela ≈ 41.7400, Lisbon ≈ 38.7223, Porto ≈ 41.1579)'),
+  longitude: z.number().nullable().describe('Center longitude for location search. REQUIRED when user mentions specific places in Portugal (e.g., Meadela ≈ -8.8080, Lisbon ≈ -9.1393, Porto ≈ -8.6291)'),
+  radiusKm: z.number().nullable().describe('Search radius in kilometers (default: 50km). Use 10, 25, 50, or 100.'),
+  minPrice: z.number().nullable().describe('Minimum price in euros'),
+  maxPrice: z.number().nullable().describe('Maximum price in euros'),
+  minSize: z.number().nullable().describe('Minimum size in square meters'),
+  maxSize: z.number().nullable().describe('Maximum size in square meters'),
+  maxDistanceToBeach: z.number().nullable().describe('Maximum distance to beach in meters'),
+  maxDistanceToCafe: z.number().nullable().describe('Maximum distance to café in meters'),
+  maxDistanceToSupermarket: z.number().nullable().describe('Maximum distance to supermarket in meters'),
+  maxDistanceToPublicTransport: z.number().nullable().describe('Maximum distance to public transport in meters'),
+  maxDistanceToRestaurant: z.number().nullable().describe('Maximum distance to restaurant in meters'),
+  maxDistanceToMainTown: z.number().nullable().describe('Maximum distance to main town in meters'),
   // Zoning filters - substring matches applied to enrichmentData.zoning fields
-  zoningLabelContains: z.string().optional().describe('Substring to match in zoning.label'),
-  zoningLabelEnContains: z.string().optional().describe('Substring to match in zoning.label_en (English translation)'),
-  zoningTypenameContains: z.string().optional().describe('Substring to match in zoning.typename'),
-  zoningPickedFieldContains: z.string().optional().describe('Substring to match in zoning.picked_field'),
-  zoningSourceContains: z.string().optional().describe('Substring to match in zoning.source'),
-  zoningTextContains: z.string().optional().describe('Free-text substring to match anywhere in enrichmentData.zoning JSON'),
-  sortBy: z.enum(['price', 'size', 'distance']).optional().default('price').describe('Sort results by price, size, or distance'),
-  sortOrder: z.enum(['asc', 'desc']).optional().default('asc').describe('Sort order: ascending or descending')
+  zoningLabelContains: z.string().nullable().describe('Substring to match in zoning.label'),
+  zoningLabelEnContains: z.string().nullable().describe('Substring to match in zoning.label_en (English translation)'),
+  zoningTypenameContains: z.string().nullable().describe('Substring to match in zoning.typename'),
+  zoningPickedFieldContains: z.string().nullable().describe('Substring to match in zoning.picked_field'),
+  zoningSourceContains: z.string().nullable().describe('Substring to match in zoning.source'),
+  zoningTextContains: z.string().nullable().describe('Free-text substring to match anywhere in enrichmentData.zoning JSON'),
+  sortBy: z.enum(['price', 'size', 'distance']).nullable().describe('Sort results by price, size, or distance (default: price)'),
+  sortOrder: z.enum(['asc', 'desc']).nullable().describe('Sort order: ascending or descending (default: asc)')
 });
 
 export type SearchPlotsParams = z.infer<typeof searchPlotsSchema>;

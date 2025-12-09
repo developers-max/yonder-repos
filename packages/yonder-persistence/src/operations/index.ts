@@ -8,3 +8,9 @@ export {
   getPlotsByIds,
   type PlotInput,
 } from './plots';
+
+export {
+  findPortugalMunicipalityByName,
+  findPortugalMunicipalityByCaopId,
+  findPortugalMunicipality,
+} from './municipalities';

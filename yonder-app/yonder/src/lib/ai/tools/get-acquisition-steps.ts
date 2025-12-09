@@ -25,8 +25,9 @@ export type GetAcquisitionStepsResult = ToolResult<{
 
 export const getAcquisitionStepsTool = tool({
   description: 'Get all acquisition steps in the Portugal land purchase process. Use when users want to understand the complete acquisition workflow.',
+  // Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
   parameters: z.object({
-    category: z.string().optional().describe('Optional category filter (e.g., "legal", "planning", "construction")')
+    category: z.string().nullable().describe('Category filter (e.g., "legal", "planning", "construction"), or null for all')
   }),
   execute: async ({ category }): Promise<GetAcquisitionStepsResult> => {
     try {
