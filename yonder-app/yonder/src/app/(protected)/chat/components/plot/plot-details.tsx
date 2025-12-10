@@ -419,11 +419,18 @@ export default function PlotDetails({
                   <div className="flex flex-col lg:flex-row gap-4">
                     {/* Left Column - Plot Details */}
                     <div className="flex-1 space-y-3">
-                      {/* Title */}
+                      {/* Title with Type Badge */}
                       <div>
-                        <h1 className="text-xl md:text-2xl font-bold text-gray-900">
-                          {strongPlot.type ? strongPlot.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Building Plot'} in {addressLoading ? '...' : (shortAddress || 'Unknown Location')}
-                        </h1>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+                            {addressLoading ? '...' : (shortAddress || 'Unknown Location')}
+                          </h1>
+                          {strongPlot.type && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                              {strongPlot.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-gray-500 mt-1 text-sm md:text-base">
                           {!addressLoading && fullAddress ? fullAddress : (shortAddress || 'Location not available')}
                         </p>
@@ -440,15 +447,6 @@ export default function PlotDetails({
                         </span>
                       </div>
 
-                      {/* Type Badge */}
-                      {strongPlot.type && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                            {strongPlot.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </span>
-                        </div>
-                      )}
-
                       {/* Description */}
                       {strongPlot.description && (
                         <div className="max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
@@ -458,18 +456,6 @@ export default function PlotDetails({
                         </div>
                       )}
 
-                      {/* View Original Listing Link */}
-                      {strongPlot.primaryListingLink && (
-                        <a 
-                          href={strongPlot.primaryListingLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          View original listing
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      )}
                     </div>
 
                     {/* Right Column - Listed By Card */}
