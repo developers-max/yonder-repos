@@ -220,33 +220,57 @@ export const realtorRouter = router({
         throw new Error('User not found');
       }
 
-      // Check if realtor is assigned to this plot
+      // Check if realtor is authorized to update this plot
+      // Authorized if: 1) assigned via organization_plots OR 2) their company is the agency/source
       const email = String(user.email || '').toLowerCase();
       const domain = email.includes('@') ? email.split('@')[1] : '';
-      let domainAuthorized = false;
-      if (domain) {
-        try {
-          const existsRes = await db.execute(
-            sql`SELECT 1 FROM realtors WHERE (website_url ILIKE ${'%' + domain + '%'} OR email ILIKE ${'%' + '@' + domain}) LIMIT 1`
-          );
-          const hasRows = hasRowsResult(existsRes) && existsRes.rows.length > 0;
-          domainAuthorized = !!hasRows;
-        } catch {
-          domainAuthorized = false;
-        }
+      
+      if (!domain) {
+        throw new Error('Invalid email domain');
       }
 
-      const whereAssignee = domainAuthorized
-        ? sql`${organizationPlotsTable.realtorEmail} ILIKE ${'%' + '@' + domain}`
-        : eq(organizationPlotsTable.realtorEmail, user.email);
+      // Check 1: Is realtor assigned to this plot via organization_plots?
+      let isAssigned = false;
+      try {
+        const existsRes = await db.execute(
+          sql`SELECT 1 FROM realtors WHERE (website_url ILIKE ${'%' + domain + '%'} OR email ILIKE ${'%' + '@' + domain}) LIMIT 1`
+        );
+        const domainAuthorized = hasRowsResult(existsRes) && existsRes.rows.length > 0;
+        
+        if (domainAuthorized) {
+          const assignedPlot = await db.execute(
+            sql`SELECT 1 FROM organization_plots WHERE plot_id = ${plotId} AND realtor_email ILIKE ${'%@' + domain} LIMIT 1`
+          );
+          isAssigned = hasRowsResult(assignedPlot) && assignedPlot.rows.length > 0;
+        } else {
+          const assignedPlot = await db
+            .select({ id: organizationPlotsTable.id })
+            .from(organizationPlotsTable)
+            .where(and(eq(organizationPlotsTable.plotId, plotId), eq(organizationPlotsTable.realtorEmail, user.email)))
+            .limit(1);
+          isAssigned = !!assignedPlot[0];
+        }
+      } catch {
+        isAssigned = false;
+      }
 
-      const assignedPlot = await db
-        .select({ id: organizationPlotsTable.id })
-        .from(organizationPlotsTable)
-        .where(and(eq(organizationPlotsTable.plotId, plotId), whereAssignee))
-        .limit(1);
+      // Check 2: Is realtor's company the agency/source for this plot?
+      let isCompanyPlot = false;
+      try {
+        const companyPlot = await db.execute(
+          sql`SELECT 1 FROM plots_stage_realtors psr
+              JOIN realtors r ON r.id = psr.realtor_id
+              WHERE psr.plot_id = ${plotId}
+                AND psr.role IN ('agency', 'source')
+                AND (r.website_url ILIKE ${'%' + domain + '%'} OR r.email ILIKE ${'%@' + domain})
+              LIMIT 1`
+        );
+        isCompanyPlot = hasRowsResult(companyPlot) && companyPlot.rows.length > 0;
+      } catch {
+        isCompanyPlot = false;
+      }
 
-      if (!assignedPlot[0]) {
+      if (!isAssigned && !isCompanyPlot) {
         throw new Error('You do not have access to update this plot');
       }
 
@@ -343,9 +367,13 @@ export const realtorRouter = router({
     .mutation(async ({ ctx, input }) => {
       await requireRealtor(ctx.user.id);
 
-      // Get realtor's email
+      // Get realtor's full user info (name, email)
       const [user] = await db
-        .select({ email: usersTable.email })
+        .select({ 
+          id: usersTable.id,
+          name: usersTable.name,
+          email: usersTable.email,
+        })
         .from(usersTable)
         .where(eq(usersTable.id, ctx.user.id))
         .limit(1);
@@ -388,7 +416,176 @@ export const realtorRouter = router({
         throw new Error('Assigned outreach request not found or not authorized');
       }
 
+      // Update the plot with the realtor's contact info (claim the plot)
+      const plotId = updated.plotId;
+      if (plotId) {
+        await db
+          .update(enrichedPlotsStage)
+          .set({
+            claimedByUserId: user.id,
+            claimedByName: user.name,
+            claimedByEmail: user.email,
+            claimedAt: new Date().toISOString(),
+          })
+          .where(eq(enrichedPlotsStage.id, plotId));
+
+        // Refresh materialized view if using prod tables
+        const useProdTables = (process.env.PLOTS_TABLE_ENV || 'stage').toLowerCase() === 'prod';
+        if (useProdTables) {
+          await db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY enriched_plots`);
+        }
+      }
+
       return updated;
+    }),
+
+  // Realtor accepts/claims a plot from their company's listings
+  acceptCompanyPlot: protectedProcedure
+    .input(
+      z.object({
+        plotId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireRealtor(ctx.user.id);
+
+      // Get realtor's full user info
+      const [user] = await db
+        .select({ 
+          id: usersTable.id,
+          name: usersTable.name,
+          email: usersTable.email,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.id, ctx.user.id))
+        .limit(1);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const email = String(user.email || '').toLowerCase();
+      const domain = email.includes('@') ? email.split('@')[1] : '';
+
+      if (!domain) {
+        throw new Error('Invalid email domain');
+      }
+
+      // Verify the plot belongs to the realtor's company (is agency or source)
+      const companyPlot = await db.execute(
+        sql`SELECT 1 FROM plots_stage_realtors psr
+            JOIN realtors r ON r.id = psr.realtor_id
+            WHERE psr.plot_id = ${input.plotId}
+              AND psr.role IN ('agency', 'source')
+              AND (r.website_url ILIKE ${'%' + domain + '%'} OR r.email ILIKE ${'%@' + domain})
+            LIMIT 1`
+      );
+
+      if (!hasRowsResult(companyPlot) || companyPlot.rows.length === 0) {
+        throw new Error('Plot not found in your company listings');
+      }
+
+      // Claim the plot by setting realtor contact info
+      await db
+        .update(enrichedPlotsStage)
+        .set({
+          claimedByUserId: user.id,
+          claimedByName: user.name,
+          claimedByEmail: user.email,
+          claimedAt: new Date().toISOString(),
+        })
+        .where(eq(enrichedPlotsStage.id, input.plotId));
+
+      // Refresh materialized view if using prod tables
+      const useProdTables = (process.env.PLOTS_TABLE_ENV || 'stage').toLowerCase() === 'prod';
+      if (useProdTables) {
+        try {
+          await db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY enriched_plots`);
+        } catch (refreshError) {
+          // If concurrent refresh fails (no unique index), try non-concurrent
+          console.warn('Concurrent refresh failed, trying non-concurrent:', refreshError);
+          try {
+            await db.execute(sql`REFRESH MATERIALIZED VIEW enriched_plots`);
+          } catch (e) {
+            console.error('Failed to refresh materialized view:', e);
+          }
+        }
+      }
+
+      return { success: true, plotId: input.plotId };
+    }),
+
+  // Realtor unclaims a plot from their company's listings
+  unacceptCompanyPlot: protectedProcedure
+    .input(
+      z.object({
+        plotId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireRealtor(ctx.user.id);
+
+      // Get realtor's email
+      const [user] = await db
+        .select({ email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, ctx.user.id))
+        .limit(1);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const email = String(user.email || '').toLowerCase();
+      const domain = email.includes('@') ? email.split('@')[1] : '';
+
+      if (!domain) {
+        throw new Error('Invalid email domain');
+      }
+
+      // Verify the plot belongs to the realtor's company (is agency or source)
+      const companyPlot = await db.execute(
+        sql`SELECT 1 FROM plots_stage_realtors psr
+            JOIN realtors r ON r.id = psr.realtor_id
+            WHERE psr.plot_id = ${input.plotId}
+              AND psr.role IN ('agency', 'source')
+              AND (r.website_url ILIKE ${'%' + domain + '%'} OR r.email ILIKE ${'%@' + domain})
+            LIMIT 1`
+      );
+
+      if (!hasRowsResult(companyPlot) || companyPlot.rows.length === 0) {
+        throw new Error('Plot not found in your company listings');
+      }
+
+      // Clear the claim info
+      await db
+        .update(enrichedPlotsStage)
+        .set({
+          claimedByUserId: null,
+          claimedByName: null,
+          claimedByEmail: null,
+          claimedByPhone: null,
+          claimedAt: null,
+        })
+        .where(eq(enrichedPlotsStage.id, input.plotId));
+
+      // Refresh materialized view if using prod tables
+      const useProdTables = (process.env.PLOTS_TABLE_ENV || 'stage').toLowerCase() === 'prod';
+      if (useProdTables) {
+        try {
+          await db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY enriched_plots`);
+        } catch (refreshError) {
+          // If concurrent refresh fails (no unique index), try non-concurrent
+          console.warn('Concurrent refresh failed, trying non-concurrent:', refreshError);
+          try {
+            await db.execute(sql`REFRESH MATERIALIZED VIEW enriched_plots`);
+          } catch (e) {
+            console.error('Failed to refresh materialized view:', e);
+          }
+        }
+      }
+
+      return { success: true, plotId: input.plotId };
     }),
 
   // Update plot cadastral geometry (polygon boundary)
@@ -522,6 +719,12 @@ export const realtorRouter = router({
           realLongitude: enrichedPlotsStage.realLongitude,
           realAddress: enrichedPlotsStage.realAddress,
           municipalityId: enrichedPlotsStage.municipalityId,
+          // Claimed realtor info
+          claimedByUserId: enrichedPlotsStage.claimedByUserId,
+          claimedByName: enrichedPlotsStage.claimedByName,
+          claimedByEmail: enrichedPlotsStage.claimedByEmail,
+          claimedByPhone: enrichedPlotsStage.claimedByPhone,
+          claimedAt: enrichedPlotsStage.claimedAt,
         })
         .from(enrichedPlotsStage)
         .where(eq(enrichedPlotsStage.id, input.plotId))
@@ -709,5 +912,166 @@ export const realtorRouter = router({
       });
 
       return { success: true, plot: updated };
+    }),
+
+  // Get plots where the realtor's company is the main agency or source
+  getMyCompanyPlots: protectedProcedure
+    .input(
+      z.object({
+        page: z.number().default(1),
+        limit: z.number().default(20),
+        searchPlotId: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      await requireRealtor(ctx.user.id);
+
+      // Get realtor's email
+      const [user] = await db
+        .select({ email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, ctx.user.id))
+        .limit(1);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const email = String(user.email || '').toLowerCase();
+      const domain = email.includes('@') ? email.split('@')[1] : '';
+
+      if (!domain) {
+        return {
+          companyName: null,
+          items: [],
+          pagination: {
+            page: input.page,
+            limit: input.limit,
+            totalCount: 0,
+            totalPages: 0,
+          },
+        };
+      }
+
+      const { page, limit, searchPlotId } = input;
+      const offset = (page - 1) * limit;
+
+      // Get company name for display
+      const companyResult = await db.execute(sql`
+        SELECT DISTINCT r.company_name
+        FROM realtors r
+        WHERE r.website_url ILIKE ${'%' + domain + '%'} OR r.email ILIKE ${'%@' + domain}
+        LIMIT 1
+      `);
+      const companyRows = hasRowsResult(companyResult) ? companyResult.rows : [];
+      const companyName = (companyRows[0] as { company_name?: string })?.company_name || null;
+
+      // Build search condition
+      const searchCondition = searchPlotId 
+        ? sql`AND ep.id::text ILIKE ${'%' + searchPlotId + '%'}`
+        : sql``;
+
+      // Find plots where a realtor matching this email domain is the agency or source
+      // Using DISTINCT ON to ensure each plot appears only once (prefer 'agency' role over 'source')
+      const plotsResult = await db.execute(sql`
+        SELECT DISTINCT ON (ep.id)
+          ep.id as plot_id,
+          ep.price,
+          ep.size,
+          ep.images,
+          ep.latitude,
+          ep.longitude,
+          ep.enrichment_data as "enrichmentData",
+          ep.real_latitude as "realLatitude",
+          ep.real_longitude as "realLongitude",
+          ep.real_address as "realAddress",
+          ep.claimed_by_user_id as "claimedByUserId",
+          ep.claimed_at as "claimedAt",
+          m.name as municipality_name,
+          m.district as municipality_district,
+          m.country as municipality_country,
+          r.company_name,
+          psr.role
+        FROM plots_stage_realtors psr
+        JOIN realtors r ON r.id = psr.realtor_id
+        JOIN enriched_plots ep ON ep.id = psr.plot_id
+        LEFT JOIN municipalities m ON m.id = ep.municipality_id
+        WHERE psr.role IN ('agency', 'source')
+          AND (r.website_url ILIKE ${'%' + domain + '%'} OR r.email ILIKE ${'%@' + domain})
+          ${searchPlotId ? sql`AND ep.id::text ILIKE ${'%' + searchPlotId + '%'}` : sql``}
+        ORDER BY ep.id DESC, psr.role ASC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `);
+
+      // Count total
+      const countResult = await db.execute(sql`
+        SELECT COUNT(DISTINCT ep.id) as count
+        FROM plots_stage_realtors psr
+        JOIN realtors r ON r.id = psr.realtor_id
+        JOIN enriched_plots ep ON ep.id = psr.plot_id
+        WHERE psr.role IN ('agency', 'source')
+          AND (r.website_url ILIKE ${'%' + domain + '%'} OR r.email ILIKE ${'%@' + domain})
+          ${searchPlotId ? sql`AND ep.id::text ILIKE ${'%' + searchPlotId + '%'}` : sql``}
+      `);
+
+      const rows = hasRowsResult(plotsResult) ? plotsResult.rows : [];
+      const countRows = hasRowsResult(countResult) ? countResult.rows : [];
+      const totalCount = Number((countRows[0] as { count: string })?.count || 0);
+
+      type PlotRow = {
+        plot_id: string;
+        price: string | null;
+        size: string | null;
+        images: string[] | null;
+        latitude: number;
+        longitude: number;
+        enrichmentData: Record<string, unknown> | null;
+        realLatitude: number | null;
+        realLongitude: number | null;
+        realAddress: string | null;
+        claimedByUserId: string | null;
+        claimedAt: string | null;
+        municipality_name: string | null;
+        municipality_district: string | null;
+        municipality_country: string | null;
+        company_name: string;
+        role: string;
+      };
+
+      return {
+        companyName,
+        items: (rows as PlotRow[]).map((row) => ({
+          plot: {
+            id: row.plot_id,
+            price: row.price,
+            size: row.size,
+            images: row.images,
+            latitude: row.latitude,
+            longitude: row.longitude,
+            enrichmentData: row.enrichmentData,
+            realLatitude: row.realLatitude,
+            realLongitude: row.realLongitude,
+            realAddress: row.realAddress,
+            claimedByUserId: row.claimedByUserId,
+            claimedAt: row.claimedAt,
+          },
+          municipality: {
+            name: row.municipality_name ?? null,
+            district: row.municipality_district ?? null,
+            country: row.municipality_country ?? 'PT',
+          },
+          realtorInfo: {
+            companyName: row.company_name,
+            role: row.role,
+          },
+        })),
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+        },
+      };
     }),
 });

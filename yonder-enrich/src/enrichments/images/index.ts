@@ -60,6 +60,25 @@ function extractIdFromItem(item: any): { casafariId?: string; fallbackId?: strin
   return { casafariId, fallbackId };
 }
 
+function extractPrimaryListingLink(item: any): string | undefined {
+  // Try various common field names for listing URLs
+  // The URL is often in the first listing object in the listings array
+  const url = item?.primary_listing_url 
+    ?? item?.listing_url 
+    ?? item?.url 
+    ?? item?.link
+    ?? item?.listing?.url
+    ?? item?.listing?.link
+    ?? item?.primary_listing?.url
+    ?? item?.listings?.[0]?.listing_url
+    ?? item?.listings?.[0]?.url;
+  
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+    return url;
+  }
+  return undefined;
+}
+
 export async function enrichImagesFromOutputs(baseDir?: string) {
   assertEnv();
   const dir = baseDir || OUTPUTS_DIR;
@@ -74,6 +93,9 @@ export async function enrichImagesFromOutputs(baseDir?: string) {
   // Aggregate images per identifier
   const imagesByCasafariId = new Map<string, Set<string>>();
   const imagesByFallbackId = new Map<string, Set<string>>();
+  // Aggregate primary listing links per identifier
+  const linksByCasafariId = new Map<string, string>();
+  const linksByFallbackId = new Map<string, string>();
 
   let filesParsed = 0;
   for (const f of files) {
@@ -84,16 +106,31 @@ export async function enrichImagesFromOutputs(baseDir?: string) {
 
     for (const item of arr) {
       const pics = extractPicturesFromItem(item);
-      if (!pics.length) continue;
       const { casafariId, fallbackId } = extractIdFromItem(item);
+      const listingLink = extractPrimaryListingLink(item);
+      
       if (casafariId) {
-        if (!imagesByCasafariId.has(casafariId)) imagesByCasafariId.set(casafariId, new Set());
-        const set = imagesByCasafariId.get(casafariId)!;
-        for (const u of pics) set.add(u);
+        // Store images
+        if (pics.length) {
+          if (!imagesByCasafariId.has(casafariId)) imagesByCasafariId.set(casafariId, new Set());
+          const set = imagesByCasafariId.get(casafariId)!;
+          for (const u of pics) set.add(u);
+        }
+        // Store listing link (first one wins)
+        if (listingLink && !linksByCasafariId.has(casafariId)) {
+          linksByCasafariId.set(casafariId, listingLink);
+        }
       } else if (fallbackId) {
-        if (!imagesByFallbackId.has(fallbackId)) imagesByFallbackId.set(fallbackId, new Set());
-        const set = imagesByFallbackId.get(fallbackId)!;
-        for (const u of pics) set.add(u);
+        // Store images
+        if (pics.length) {
+          if (!imagesByFallbackId.has(fallbackId)) imagesByFallbackId.set(fallbackId, new Set());
+          const set = imagesByFallbackId.get(fallbackId)!;
+          for (const u of pics) set.add(u);
+        }
+        // Store listing link (first one wins)
+        if (listingLink && !linksByFallbackId.has(fallbackId)) {
+          linksByFallbackId.set(fallbackId, listingLink);
+        }
       }
     }
     filesParsed++;
@@ -108,6 +145,7 @@ export async function enrichImagesFromOutputs(baseDir?: string) {
     await client.query('ALTER TABLE enriched_plots_stage ADD COLUMN IF NOT EXISTS images jsonb');
     await client.query('ALTER TABLE enriched_plots_stage ADD COLUMN IF NOT EXISTS plot_report_url TEXT');
     await client.query('ALTER TABLE enriched_plots_stage ADD COLUMN IF NOT EXISTS plot_report_json JSONB');
+    await client.query('ALTER TABLE enriched_plots_stage ADD COLUMN IF NOT EXISTS primary_listing_link TEXT');
 
     const updateFromEntries = async (
       entries: Array<[string, string[]]>,
@@ -147,7 +185,50 @@ WHERE eps.id = ps.id`;
     const fallbackEntries: Array<[string, string[]]> = Array.from(imagesByFallbackId.entries()).map(([k, v]) => [k, Array.from(v)]);
     await updateFromEntries(fallbackEntries, 'id_text', true);
 
-    console.log('Images enrichment complete.');
+    // Update primary listing links
+    const updateLinksFromEntries = async (
+      entries: Array<[string, string]>,
+      joinOn: 'casafari_id' | 'id_text'
+    ) => {
+      for (let i = 0; i < entries.length; i += 200) {
+        const batch = entries.slice(i, i + 200);
+        if (!batch.length) continue;
+        const values: any[] = [];
+        const tuples: string[] = [];
+        batch.forEach((e, idx) => {
+          const [ident, link] = e;
+          values.push(ident, link);
+          tuples.push(`($${idx * 2 + 1}::text, $${idx * 2 + 2}::text)`);
+        });
+        const cte = `WITH data(ident, link) AS (VALUES ${tuples.join(', ')})`;
+        const joinCond = joinOn === 'casafari_id'
+          ? `JOIN public.plots_stage ps ON ps.casafari_id::text = data.ident`
+          : `JOIN public.plots_stage ps ON ps.id::text = data.ident`;
+        const sql = `${cte}
+UPDATE public.enriched_plots_stage eps
+SET primary_listing_link = COALESCE(eps.primary_listing_link, data.link)
+FROM data
+${joinCond}
+WHERE eps.id = ps.id`;
+        await client.query(sql, values);
+      }
+    };
+
+    // Update links via casafari_id
+    const casafariLinkEntries: Array<[string, string]> = Array.from(linksByCasafariId.entries());
+    if (casafariLinkEntries.length > 0) {
+      console.log(`Updating ${casafariLinkEntries.length} primary listing links via casafari_id...`);
+      await updateLinksFromEntries(casafariLinkEntries, 'casafari_id');
+    }
+
+    // Update links via fallback id
+    const fallbackLinkEntries: Array<[string, string]> = Array.from(linksByFallbackId.entries());
+    if (fallbackLinkEntries.length > 0) {
+      console.log(`Updating ${fallbackLinkEntries.length} primary listing links via fallback id...`);
+      await updateLinksFromEntries(fallbackLinkEntries, 'id_text');
+    }
+
+    console.log('Images and listing links enrichment complete.');
   } finally {
     client.release();
     await pool.end();

@@ -277,6 +277,7 @@ export default function AdminPlotsPage() {
                   <TableHead>Public Coordinates</TableHead>
                   <TableHead>Accurate Coordinates</TableHead>
                   <TableHead>Municipality</TableHead>
+                  <TableHead>Claimed By</TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>Size (m²)</TableHead>
                   <TableHead>Boundary</TableHead>
@@ -322,6 +323,26 @@ export default function AdminPlotsPage() {
                       <MapPin className="w-4 h-4 text-gray-400" />
                       {plot.municipality?.name || '-'}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-gray-700">
+                    {plot.claimedByUserId ? (
+                      <div className="text-xs space-y-0.5">
+                        <div className="font-medium text-gray-900">{plot.claimedByName || 'Unknown'}</div>
+                        {plot.claimedByEmail && (
+                          <div className="text-gray-500">{plot.claimedByEmail}</div>
+                        )}
+                        {plot.claimedByPhone && (
+                          <div className="text-gray-500">{plot.claimedByPhone}</div>
+                        )}
+                        {plot.claimedAt && (
+                          <div className="text-gray-400 text-[10px]">
+                            {new Date(plot.claimedAt).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 italic text-xs">Unclaimed</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-gray-900">
                     {plot.price ? `€${Number(plot.price).toLocaleString()}` : '-'}

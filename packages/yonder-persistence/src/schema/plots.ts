@@ -68,11 +68,18 @@ export const enrichedPlots = pgTable(__enrichedPlotsTableName, {
   realLatitude: doublePrecision("real_latitude"),
   realLongitude: doublePrecision("real_longitude"),
   realAddress: text("real_address"),
+  // Claimed realtor contact info (set when realtor claims/accepts the plot)
+  claimedByUserId: text("claimed_by_user_id"),
+  claimedByName: text("claimed_by_name"),
+  claimedByEmail: text("claimed_by_email"),
+  claimedByPhone: text("claimed_by_phone"),
+  claimedAt: text("claimed_at"), // ISO timestamp
   // Listing information from Casafari
   description: text(), // Description from listing
   timeInMarket: integer("time_in_market"), // Days on market
   status: text().default('active'), // Listing status: active, sold, pending, etc.
   type: text(), // Property type: urban_plot, rustic_plot, etc.
+  primaryListingLink: text("primary_listing_link"), // URL to the original listing
 }, (table) => [
   index("enriched_plots_geom_idx").using("gist", table.geom.asc().nullsLast().op("gist_geometry_ops_2d")),
   index("idx_enriched_plots_size").using("btree", table.size.asc().nullsLast().op("numeric_ops")),
@@ -128,11 +135,18 @@ export const enrichedPlotsStage = pgTable("enriched_plots_stage", {
   realLatitude: doublePrecision("real_latitude"),
   realLongitude: doublePrecision("real_longitude"),
   realAddress: text("real_address"),
+  // Claimed realtor contact info (set when realtor claims/accepts the plot)
+  claimedByUserId: text("claimed_by_user_id"),
+  claimedByName: text("claimed_by_name"),
+  claimedByEmail: text("claimed_by_email"),
+  claimedByPhone: text("claimed_by_phone"),
+  claimedAt: text("claimed_at"), // ISO timestamp
   // Listing information from Casafari
   description: text(), // Description from listing
   timeInMarket: integer("time_in_market"), // Days on market
   status: text().default('active'), // Listing status: active, sold, pending, etc.
   type: text(), // Property type: urban_plot, rustic_plot, etc.
+  primaryListingLink: text("primary_listing_link"), // URL to the original listing
 }, (table) => [
   index("enriched_plots_stage_geom_idx").using("gist", table.geom.asc().nullsLast().op("gist_geometry_ops_2d")),
   index("idx_enriched_plots_stage_size").using("btree", table.size.asc().nullsLast().op("numeric_ops")),

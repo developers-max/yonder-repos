@@ -15,7 +15,8 @@ import {
   Download,
   Check,
   MapPin,
-  Settings
+  Settings,
+  Lock
 } from 'lucide-react';
 import Link from 'next/link';
 import type { EnrichmentData } from '@/server/trpc/router/plot/plots';
@@ -34,6 +35,21 @@ type Plot = PlotRouterOutput['plots']['getPlot'] & {
   price: number;
   size: number | null;
   plotReportJson?: unknown;
+  municipality: {
+    id: number;
+    name: string;
+    district: string | null;
+    country: string | null;
+    website: string | null;
+    pdmDocuments: {
+      documents?: Array<{
+        id: string;
+        documentType: string;
+        url: string;
+        name?: string;
+      }>;
+    } | null;
+  } | null;
 };
 
 // Realtors returned by backend for a plot
@@ -51,7 +67,7 @@ type RealtorForPlot = {
 
 interface PlotDetailsOverviewProps {
   plot: Plot;
-  landDataLocked?: boolean;
+  hasRealCoordinates?: boolean;
 }
 
 // Get country code from plot's municipality (defaults to PT)
@@ -63,7 +79,7 @@ function getCountryFromPlot(plot: Plot): 'PT' | 'ES' {
 
 export default function PlotDetailsOverview({
   plot,
-  landDataLocked = false,
+  hasRealCoordinates = true,
 }: PlotDetailsOverviewProps) {
   const { data: session } = useSession();
   const organizationId = session?.session?.activeOrganizationId;
@@ -270,44 +286,59 @@ export default function PlotDetailsOverview({
   };
 
   const renderLockedValue = (value: string | null | undefined) => {
-    const display = value ?? 'N/A';
-    if (!landDataLocked || display === 'N/A') {
-      return display;
-    }
-    return (
-      <span className="blur-sm select-none inline-block">
-        {display}
-      </span>
-    );
+    return value ?? 'N/A';
   };
 
   return (
     <div className="space-y-6 md:space-y-8">
 
       {/* Cadastral Snapshot */}
-      {(cadastralReference || parcelAreaValue || parcelLabel) && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="rounded-2xl border border-gray-200 p-4 bg-white">
-              <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Cadastral Reference</div>
-              <div className="text-xl font-semibold text-gray-900">{cadastralReference || 'N/A'}</div>
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-2xl border border-gray-200 p-4 bg-white">
+            <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Cadastral Reference</div>
+            <div className="text-xl font-semibold text-gray-900">
+              {!hasRealCoordinates ? (
+                <span className="flex items-center gap-2 text-base text-gray-500">
+                  <Lock className="w-4 h-4" />
+                  <span className="text-sm italic font-normal">Requires verified plot coordinates</span>
+                </span>
+              ) : (
+                cadastralReference || 'N/A'
+              )}
             </div>
-            <div className="rounded-2xl border border-gray-200 p-4 bg-white">
-              <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Parcel Area</div>
-              <div className="text-xl font-semibold text-gray-900">
-                {parcelAreaValue ? `${parcelAreaValue.toLocaleString()} m²` : 'N/A'}
-              </div>
+          </div>
+          <div className="rounded-2xl border border-gray-200 p-4 bg-white">
+            <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Parcel Area</div>
+            <div className="text-xl font-semibold text-gray-900">
+              {!hasRealCoordinates ? (
+                <span className="flex items-center gap-2 text-base text-gray-500">
+                  <Lock className="w-4 h-4" />
+                  <span className="text-sm italic font-normal">Requires verified plot coordinates</span>
+                </span>
+              ) : (
+                parcelAreaValue ? `${parcelAreaValue.toLocaleString()} m²` : 'N/A'
+              )}
             </div>
-            <div className="rounded-2xl border border-gray-200 p-4 bg-white">
-              <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Plot Label</div>
-              <div className="text-xl font-semibold text-gray-900">{parcelLabel || 'N/A'}</div>
+          </div>
+          <div className="rounded-2xl border border-gray-200 p-4 bg-white">
+            <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Plot Label</div>
+            <div className="text-xl font-semibold text-gray-900">
+              {!hasRealCoordinates ? (
+                <span className="flex items-center gap-2 text-base text-gray-500">
+                  <Lock className="w-4 h-4" />
+                  <span className="text-sm italic font-normal">Requires verified plot coordinates</span>
+                </span>
+              ) : (
+                parcelLabel || 'N/A'
+              )}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Amenities & Surrounding Area */}
-      {enrichmentInfo.length > 0 && (
+      {/* Amenities & Surrounding Area - Moved to Area Information section in plot-details.tsx */}
+      {/* {enrichmentInfo.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 space-y-3 md:space-y-4">
           <h3 className="text-lg font-semibold text-gray-900">Nearby Amenities</h3>
           <div className="space-y-2">
@@ -331,28 +362,34 @@ export default function PlotDetailsOverview({
             })}
           </div>
         </div>
-      )}
+      )} */}
 
-      {/* General Zoning Section */}
-        {zoning && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900">General Zoning</h3>
-                  <p className="text-sm text-gray-600">Overall zoning classification from government API</p>
-                </div>
-              </div>
-              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                📡 Live API Data
-              </Badge>
+      {/* Zoning (PDM / POUM) Section */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+              </svg>
             </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900">Zoning ({planningDocName} / POUM)</h3>
+              <p className="text-sm text-gray-600">Exact zoning polygon and building parameters from official sources</p>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-200">
+            Parcel-specific
+          </Badge>
+        </div>
 
+        {!hasRealCoordinates ? (
+          <div className="flex items-center gap-2 text-gray-500">
+            <Lock className="w-4 h-4" />
+            <span className="text-sm italic">Requires verified plot coordinates</span>
+          </div>
+        ) : zoning ? (
+          <>
             <div className="space-y-3 md:space-y-4">
               {/* Row 1: Zone Type and Zone Codes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-x-8">
@@ -417,167 +454,182 @@ export default function PlotDetailsOverview({
             <p className="text-xs text-gray-500 mt-4 pt-4 border-t border-gray-100">
               Data sourced from the Spanish Cadastre and Land Registry API. Updated automatically from official government records.
             </p>
-          </div>
+          </>
+        ) : (
+          <p className="text-sm text-gray-500">No zoning data available for this plot.</p>
         )}
+      </div>
 
       {/* Municipality Information (temporarily removed) */}
       {false && plot.municipality && (
         <div></div>
       )}
 
-      {/* Local Zoning & Building Regulations */}
-      {plot.municipality && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 space-y-4 md:space-y-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900">Local Zoning & Building Regulations</h3>
-                  <p className="text-sm text-gray-600">Municipal planning rules and construction requirements</p>
-                </div>
+      {/* Local Building Regulations */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 space-y-4 md:space-y-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <FileText className="w-5 h-5 text-blue-600" />
               </div>
-            </div>
-            <Badge variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-200">
-              📄 ~Multi-page PDF
-            </Badge>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 sm:gap-y-6 gap-x-6 sm:gap-x-10 text-sm">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Setback Requirements</div>
-              <div className="text-base font-semibold text-gray-900">
-                {regulationsLoading ? (
-                  <span className="text-gray-400 animate-pulse">Loading...</span>
-                ) : (
-                  renderLockedValue(regulations?.setbackRequirements || 'N/A')
-                )}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Max Floors</div>
-              <div className="text-base font-semibold text-gray-900">
-                {regulationsLoading ? (
-                  <span className="text-gray-400 animate-pulse">Loading...</span>
-                ) : (
-                  renderLockedValue(regulations?.maxFloors || 'N/A')
-                )}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Parking Required</div>
-              <div className="text-base font-semibold text-gray-900">
-                {regulationsLoading ? (
-                  <span className="text-gray-400 animate-pulse">Loading...</span>
-                ) : (
-                  renderLockedValue(regulations?.parkingRequired || 'N/A')
-                )}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Green Space</div>
-              <div className="text-base font-semibold text-gray-900">
-                {regulationsLoading ? (
-                  <span className="text-gray-400 animate-pulse">Loading...</span>
-                ) : (
-                  renderLockedValue(regulations?.greenSpace || 'N/A')
-                )}
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Local Building Regulations</h3>
+                <p className="text-sm text-gray-600">Detailed setbacks, coverage ratios, and construction requirements for this parcel</p>
               </div>
             </div>
           </div>
+          <Badge variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-200">
+            Multi-page document
+          </Badge>
+        </div>
 
-          {(() => {
-            const pdmDocs = plot.municipality?.pdmDocuments?.documents?.filter(
-              (document) => document.documentType === "pdm"
-            ) || [];
-            
-            return (
-              <div className="pt-4 border-t border-gray-100">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <MapPin className="w-4 h-4" />
-                    <span className="font-medium">{plot.municipality?.name || 'Unknown Municipality'}</span>
-                    <span className="text-xs text-gray-400">(ID: {plot.municipality?.id})</span>
-                  </div>
-                  {pdmDocs.length > 0 ? (
-                    pdmDocs.map((document) => (
-                      <Button
-                        key={document.id}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(document.url, "_blank")}
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Download Complete Regulations PDF
-                      </Button>
-                    ))
+        {!hasRealCoordinates ? (
+          <div className="flex items-center gap-2 text-gray-500">
+            <Lock className="w-4 h-4" />
+            <span className="text-sm italic">Requires verified plot coordinates</span>
+          </div>
+        ) : plot.municipality ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 sm:gap-y-6 gap-x-6 sm:gap-x-10 text-sm">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Setback Requirements</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {regulationsLoading ? (
+                    <span className="text-gray-400 animate-pulse">Loading...</span>
                   ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRequestPdm}
-                      disabled={createReq.isPending || myReq?.requested}
-                      className={
-                        myReq?.requested
-                          ? "text-green-600 border-green-600 hover:bg-green-50"
-                          : ""
-                      }
-                    >
-                      {myReq?.requested ? (
-                        <>
-                          <Check className="w-4 h-4 mr-1" />
-                          Requested
-                        </>
-                      ) : createReq.isPending ? (
-                        "Requesting…"
-                      ) : (
-                        <>
-                          <Download className="w-4 h-4 mr-1" />
-                          Request {planningDocName}
-                        </>
-                      )}
-                    </Button>
+                    renderLockedValue(regulations?.setbackRequirements || 'N/A')
                   )}
                 </div>
               </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Cadastre Information Card */}
-      {(plot.enrichmentData as EnrichmentData | null)?.cadastral && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0">
-                  <MapPin className="w-5 h-5 text-teal-600" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900">Cadastre Information</h3>
-                  <p className="text-sm text-gray-600">Official property registration and boundary data</p>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Max Floors</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {regulationsLoading ? (
+                    <span className="text-gray-400 animate-pulse">Loading...</span>
+                  ) : (
+                    renderLockedValue(regulations?.maxFloors || 'N/A')
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {isAdmin && (
-                  <Link
-                    href={`/admin/plots?plotId=${plot.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors"
-                  >
-                    <Settings className="w-4 h-4" />
-                    Edit
-                  </Link>
-                )}
-                <Badge variant="outline" className="text-xs bg-gray-50 text-gray-700 border-gray-200">
-                  📋 Government Registry
-                </Badge>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Parking Required</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {regulationsLoading ? (
+                    <span className="text-gray-400 animate-pulse">Loading...</span>
+                  ) : (
+                    renderLockedValue(regulations?.parkingRequired || 'N/A')
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Green Space</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {regulationsLoading ? (
+                    <span className="text-gray-400 animate-pulse">Loading...</span>
+                  ) : (
+                    renderLockedValue(regulations?.greenSpace || 'N/A')
+                  )}
+                </div>
               </div>
             </div>
 
+            {(() => {
+              const pdmDocs = plot.municipality?.pdmDocuments?.documents?.filter(
+                (document) => document.documentType === "pdm"
+              ) || [];
+              
+              return (
+                <div className="pt-4 border-t border-gray-100">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <MapPin className="w-4 h-4" />
+                      <span className="font-medium">{plot.municipality?.name || 'Unknown Municipality'}</span>
+                      <span className="text-xs text-gray-400">(ID: {plot.municipality?.id})</span>
+                    </div>
+                    {pdmDocs.length > 0 ? (
+                      pdmDocs.map((document) => (
+                        <Button
+                          key={document.id}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(document.url, "_blank")}
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download Complete Regulations PDF
+                        </Button>
+                      ))
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRequestPdm}
+                        disabled={createReq.isPending || myReq?.requested}
+                        className={
+                          myReq?.requested
+                            ? "text-green-600 border-green-600 hover:bg-green-50"
+                            : ""
+                        }
+                      >
+                        {myReq?.requested ? (
+                          <>
+                            <Check className="w-4 h-4 mr-1" />
+                            Requested
+                          </>
+                        ) : createReq.isPending ? (
+                          "Requesting…"
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4 mr-1" />
+                            Request {planningDocName}
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </>
+        ) : (
+          <p className="text-sm text-gray-500">No municipality data available for this plot.</p>
+        )}
+      </div>
+
+      {/* Cadastre Section */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0">
+              <MapPin className="w-5 h-5 text-teal-600" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900">Cadastre</h3>
+              <p className="text-sm text-gray-600">Official parcel boundaries, cadastral ID, and registration data</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasRealCoordinates && isAdmin && (
+              <Link
+                href={`/admin/plots?plotId=${plot.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                Edit
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {!hasRealCoordinates ? (
+          <div className="flex items-center gap-2 text-gray-500">
+            <Lock className="w-4 h-4" />
+            <span className="text-sm italic">Requires verified plot coordinates</span>
+          </div>
+        ) : (plot.enrichmentData as EnrichmentData | null)?.cadastral ? (
+          <>
             {/* Cadastre Map with Parcel Boundaries */}
             <div className="mb-6 rounded-lg overflow-hidden">
               <CadastralPolygonEditor
@@ -643,8 +695,11 @@ export default function PlotDetailsOverview({
             <p className="text-xs text-gray-500 pt-4 border-t border-gray-100">
               Cadastral data includes official boundary coordinates, property classification, and assessed values from the Spanish Cadastre database.
             </p>
-          </div>
+          </>
+        ) : (
+          <p className="text-sm text-gray-500">No cadastral data available for this plot.</p>
         )}
+      </div>
     </div>
   );
 }

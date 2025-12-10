@@ -73,7 +73,13 @@ export default function Home() {
           <Link href="/" className="font-semibold">
             <Image src="/logo.svg" alt="Yonder" width={100} height={100} />
           </Link>
-          <div className="ml-auto md:ml-6 flex items-center gap-2">
+          <div className="ml-auto md:ml-6 flex items-center gap-4">
+            <Link
+              href="/landing/realtor"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              For Realtors
+            </Link>
             <Link
               href="/login"
               className="px-3 py-1.5 rounded-full font-semibold text-base h-10 hover:bg-accent"

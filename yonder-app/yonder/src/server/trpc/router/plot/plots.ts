@@ -99,34 +99,35 @@ type RealtorForPlot = {
 };
 
 // Filter schema for the side panel
+// Using .nullish() instead of .optional() to accept both null and undefined values
 export const plotFiltersSchema = z.object({
-  minPrice: z.number().optional(),
-  maxPrice: z.number().optional(),
-  minSize: z.number().optional(),
-  maxSize: z.number().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  radiusKm: z.number().optional().default(50),
+  minPrice: z.number().nullish(),
+  maxPrice: z.number().nullish(),
+  minSize: z.number().nullish(),
+  maxSize: z.number().nullish(),
+  latitude: z.number().nullish(),
+  longitude: z.number().nullish(),
+  radiusKm: z.number().nullish().default(50),
   // Map bounds as alternative to lat/lng/radius
   bounds: z.object({
     north: z.number(),
     south: z.number(),
     east: z.number(),
     west: z.number(),
-  }).optional(),
-  maxDistanceToBeach: z.number().optional(),
-  maxDistanceToCafe: z.number().optional(),
-  maxDistanceToSupermarket: z.number().optional(),
-  maxDistanceToPublicTransport: z.number().optional(),
-  maxDistanceToRestaurant: z.number().optional(),
-  maxDistanceToMainTown: z.number().optional(),
+  }).nullish(),
+  maxDistanceToBeach: z.number().nullish(),
+  maxDistanceToCafe: z.number().nullish(),
+  maxDistanceToSupermarket: z.number().nullish(),
+  maxDistanceToPublicTransport: z.number().nullish(),
+  maxDistanceToRestaurant: z.number().nullish(),
+  maxDistanceToMainTown: z.number().nullish(),
   // Zoning filters
-  zoningLabelContains: z.string().optional(),
-  zoningLabelEnContains: z.string().optional(),
-  zoningTypenameContains: z.string().optional(),
-  zoningPickedFieldContains: z.string().optional(),
-  zoningSourceContains: z.string().optional(),
-  zoningTextContains: z.string().optional(),
+  zoningLabelContains: z.string().nullish(),
+  zoningLabelEnContains: z.string().nullish(),
+  zoningTypenameContains: z.string().nullish(),
+  zoningPickedFieldContains: z.string().nullish(),
+  zoningSourceContains: z.string().nullish(),
+  zoningTextContains: z.string().nullish(),
   page: z.number().default(1),
   limit: z.number().default(20),
   sortBy: z.enum(['price', 'size', 'distance']).default('price'),
@@ -175,16 +176,16 @@ export const plotsRouter = router({
 
       try {
         // Basic filters (same as regular search)
-        if (minPrice !== undefined) {
+        if (minPrice != null) {
           conditions.push(gte(enrichedPlots.price, minPrice.toString()));
         }
-        if (maxPrice !== undefined) {
+        if (maxPrice != null) {
           conditions.push(lte(enrichedPlots.price, maxPrice.toString()));
         }
-        if (minSize !== undefined) {
+        if (minSize != null) {
           conditions.push(gte(enrichedPlots.size, minSize.toString()));
         }
-        if (maxSize !== undefined) {
+        if (maxSize != null) {
           conditions.push(lte(enrichedPlots.size, maxSize.toString()));
         }
 
@@ -193,39 +194,39 @@ export const plotsRouter = router({
           conditions.push(
             sql`ST_Within(${enrichedPlots.geom}, ST_SetSRID(ST_MakeEnvelope(${bounds.west}, ${bounds.south}, ${bounds.east}, ${bounds.north}), 4326))`
           );
-        } else if (latitude && longitude) {
+        } else if (latitude && longitude && radiusKm != null) {
           conditions.push(
             sql`ST_DistanceSphere(${enrichedPlots.geom}, ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)) <= ${radiusKm * 1000}`
           );
         }
 
         // Enrichment data filters (same as regular search)
-        if (maxDistanceToBeach !== undefined) {
+        if (maxDistanceToBeach != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'beach'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'beach'->>'distance')::integer <= ${maxDistanceToBeach}`
           );
         }
-        if (maxDistanceToCafe !== undefined) {
+        if (maxDistanceToCafe != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'cafe'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'cafe'->>'distance')::integer <= ${maxDistanceToCafe}`
           );
         }
-        if (maxDistanceToSupermarket !== undefined) {
+        if (maxDistanceToSupermarket != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'supermarket'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'supermarket'->>'distance')::integer <= ${maxDistanceToSupermarket}`
           );
         }
-        if (maxDistanceToPublicTransport !== undefined) {
+        if (maxDistanceToPublicTransport != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'public_transport'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'public_transport'->>'distance')::integer <= ${maxDistanceToPublicTransport}`
           );
         }
-        if (maxDistanceToRestaurant !== undefined) {
+        if (maxDistanceToRestaurant != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'restaurant_or_fastfood'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'restaurant_or_fastfood'->>'distance')::integer <= ${maxDistanceToRestaurant}`
           );
         }
-        if (maxDistanceToMainTown !== undefined) {
+        if (maxDistanceToMainTown != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'nearest_main_town'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'nearest_main_town'->>'distance')::integer <= ${maxDistanceToMainTown}`
           );
@@ -366,6 +367,17 @@ export const plotsRouter = router({
             timeInMarket: enrichedPlots.timeInMarket,
             status: enrichedPlots.status,
             type: enrichedPlots.type,
+            // Realtor-verified location data
+            realLatitude: enrichedPlots.realLatitude,
+            realLongitude: enrichedPlots.realLongitude,
+            realAddress: enrichedPlots.realAddress,
+            // Claimed realtor contact info
+            claimedByUserId: enrichedPlots.claimedByUserId,
+            claimedByName: enrichedPlots.claimedByName,
+            claimedByEmail: enrichedPlots.claimedByEmail,
+            claimedByPhone: enrichedPlots.claimedByPhone,
+            claimedAt: enrichedPlots.claimedAt,
+            primaryListingLink: enrichedPlots.primaryListingLink,
             municipality: {
               id: municipalities.id,
               name: municipalities.name,
@@ -421,6 +433,17 @@ export const plotsRouter = router({
           timeInMarket: plot[0].timeInMarket,
           status: plot[0].status,
           type: plot[0].type,
+          // Realtor-verified location data
+          realLatitude: plot[0].realLatitude,
+          realLongitude: plot[0].realLongitude,
+          realAddress: plot[0].realAddress,
+          // Claimed realtor contact info
+          claimedByUserId: plot[0].claimedByUserId,
+          claimedByName: plot[0].claimedByName,
+          claimedByEmail: plot[0].claimedByEmail,
+          claimedByPhone: plot[0].claimedByPhone,
+          claimedAt: plot[0].claimedAt,
+          primaryListingLink: plot[0].primaryListingLink,
           municipality: plot[0].municipality,
           realtors,
         };
@@ -504,16 +527,16 @@ export const plotsRouter = router({
 
       try {
         // Basic filters
-        if (minPrice !== undefined) {
+        if (minPrice != null) {
           conditions.push(gte(enrichedPlots.price, minPrice.toString()));
         }
-        if (maxPrice !== undefined) {
+        if (maxPrice != null) {
           conditions.push(lte(enrichedPlots.price, maxPrice.toString()));
         }
-        if (minSize !== undefined) {
+        if (minSize != null) {
           conditions.push(gte(enrichedPlots.size, minSize.toString()));
         }
-        if (maxSize !== undefined) {
+        if (maxSize != null) {
           conditions.push(lte(enrichedPlots.size, maxSize.toString()));
         }
 
@@ -523,40 +546,40 @@ export const plotsRouter = router({
           conditions.push(
             sql`ST_Within(${enrichedPlots.geom}, ST_SetSRID(ST_MakeEnvelope(${bounds.west}, ${bounds.south}, ${bounds.east}, ${bounds.north}), 4326))`
           );
-        } else if (latitude && longitude) {
-          // Use radius for list view
+        } else if (latitude && longitude && radiusKm != null) {
+          // Use radius search for center-based view
           conditions.push(
             sql`ST_DistanceSphere(${enrichedPlots.geom}, ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)) <= ${radiusKm * 1000}`
           );
         }
 
         // Enrichment data filters
-        if (maxDistanceToBeach !== undefined) {
+        if (maxDistanceToBeach != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'beach'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'beach'->>'distance')::integer <= ${maxDistanceToBeach}`
           );
         }
-        if (maxDistanceToCafe !== undefined) {
+        if (maxDistanceToCafe != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'cafe'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'cafe'->>'distance')::integer <= ${maxDistanceToCafe}`
           );
         }
-        if (maxDistanceToSupermarket !== undefined) {
+        if (maxDistanceToSupermarket != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'supermarket'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'supermarket'->>'distance')::integer <= ${maxDistanceToSupermarket}`
           );
         }
-        if (maxDistanceToPublicTransport !== undefined) {
+        if (maxDistanceToPublicTransport != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'public_transport'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'public_transport'->>'distance')::integer <= ${maxDistanceToPublicTransport}`
           );
         }
-        if (maxDistanceToRestaurant !== undefined) {
+        if (maxDistanceToRestaurant != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'restaurant_or_fastfood'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'restaurant_or_fastfood'->>'distance')::integer <= ${maxDistanceToRestaurant}`
           );
         }
-        if (maxDistanceToMainTown !== undefined) {
+        if (maxDistanceToMainTown != null) {
           conditions.push(
             sql`${enrichedPlots.enrichmentData}->'nearest_main_town'->>'distance' IS NOT NULL AND (${enrichedPlots.enrichmentData}->'nearest_main_town'->>'distance')::integer <= ${maxDistanceToMainTown}`
           );

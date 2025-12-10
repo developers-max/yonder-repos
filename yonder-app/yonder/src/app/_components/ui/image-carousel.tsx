@@ -101,9 +101,9 @@ export function ImageCarousel({ images, alt = "Image" }: ImageCarouselProps) {
         </div>
       )}
 
-      {/* Image counter - Airbnb Style */}
+      {/* Image counter - Bottom Right */}
       {images.length > 1 && (
-        <div className="absolute top-4 right-4 z-10 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
+        <div className="absolute bottom-4 right-4 z-10 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
           <span className="text-white text-sm font-medium">
             {currentSlide} / {images.length}
           </span>
