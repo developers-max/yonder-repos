@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, Fragment, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { trpc } from '@/trpc/client';
 import { Card, CardContent } from '@/app/_components/ui/card';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/app/_components/ui/table';
 import Link from 'next/link';
-import { MapPin, Pencil, Check, X, ExternalLink, Map, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
+import { MapPin, Pencil, Check, X, ExternalLink, Map, ChevronDown, ChevronUp, ArrowLeft, Search, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import type { AppRouter } from '@/server/trpc';
 import type { inferRouterOutputs } from '@trpc/server';
 import { useToast } from '@/app/_components/ui/toast-provider';
@@ -14,7 +15,56 @@ import { Button } from '@/app/_components/ui/button';
 
 export default function RealtorDashboard() {
   const utils = trpc.useUtils();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlPlotId = searchParams.get('plotId');
+  
+  // Function to clear URL params and search state
+  const clearSearchAndUrl = useCallback(() => {
+    setShowNotFoundError(false);
+    setSearchInputValue('');
+    setCompanyPlotsSearch('');
+    // Clear the URL parameter
+    router.replace('/realtor', { scroll: false });
+  }, [router]);
+  
   const { data, isLoading } = trpc.realtor.getAssignedOutreachRequests.useQuery({ page: 1, limit: 20 });
+  
+  // Company plots state
+  const [companyPlotsPage, setCompanyPlotsPage] = useState(1);
+  const [companyPlotsSearch, setCompanyPlotsSearch] = useState('');
+  const [searchInputValue, setSearchInputValue] = useState('');
+  const [showNotFoundError, setShowNotFoundError] = useState(false);
+  const [searchedPlotId, setSearchedPlotId] = useState<string | null>(null);
+  const companyPlotsLimit = 20;
+  
+  const { data: companyPlotsData, isLoading: companyPlotsLoading } = trpc.realtor.getMyCompanyPlots.useQuery({ 
+    page: companyPlotsPage, 
+    limit: companyPlotsLimit,
+    searchPlotId: companyPlotsSearch || undefined,
+  });
+
+  // Handle URL plotId parameter - pre-fill search and trigger it
+  useEffect(() => {
+    if (urlPlotId && !companyPlotsSearch) {
+      setSearchInputValue(urlPlotId);
+      setCompanyPlotsSearch(urlPlotId);
+      setSearchedPlotId(urlPlotId);
+      setCompanyPlotsPage(1);
+    }
+  }, [urlPlotId, companyPlotsSearch]);
+
+  // Show error popup if search from URL returns no results
+  useEffect(() => {
+    if (searchedPlotId && !companyPlotsLoading && companyPlotsData) {
+      if (companyPlotsData.items.length === 0) {
+        setShowNotFoundError(true);
+      }
+      // Reset searchedPlotId after checking
+      setSearchedPlotId(null);
+    }
+  }, [searchedPlotId, companyPlotsLoading, companyPlotsData]);
+  
   const toast = useToast();
   const [editingPlotId, setEditingPlotId] = useState<string | null>(null);
   const [expandedMapPlotId, setExpandedMapPlotId] = useState<string | null>(null);
@@ -26,6 +76,26 @@ export default function RealtorDashboard() {
   const acceptMutation = trpc.realtor.acceptAssignedOutreachRequest.useMutation({
     onSuccess: () => {
       utils.realtor.getAssignedOutreachRequests.invalidate();
+    },
+  });
+
+  const acceptCompanyPlotMutation = trpc.realtor.acceptCompanyPlot.useMutation({
+    onSuccess: () => {
+      utils.realtor.getMyCompanyPlots.invalidate();
+      toast.success('Plot accepted successfully');
+    },
+    onError: (error) => {
+      toast.error(`Failed to accept plot: ${error.message}`);
+    },
+  });
+
+  const unacceptCompanyPlotMutation = trpc.realtor.unacceptCompanyPlot.useMutation({
+    onSuccess: () => {
+      utils.realtor.getMyCompanyPlots.invalidate();
+      toast.success('Plot unaccepted successfully');
+    },
+    onError: (error) => {
+      toast.error(`Failed to unaccept plot: ${error.message}`);
     },
   });
 
@@ -90,7 +160,7 @@ export default function RealtorDashboard() {
     },
   });
 
-  if (isLoading) {
+  if (isLoading && companyPlotsLoading) {
     return (
       <div className="space-y-4">
         {[...Array(4)].map((_, i) => (
@@ -151,6 +221,12 @@ export default function RealtorDashboard() {
           </Button>
         </Link>
       </div>
+      {/* Project Requests Section */}
+      <div className="space-y-3">
+        <h2 className="text-base md:text-lg font-semibold text-gray-800">Project Requests</h2>
+        <p className="text-xs md:text-sm text-gray-500">Plots that buyers have added to their projects and assigned to you</p>
+      </div>
+
       {items.length === 0 ? (
         <Card>
           <CardContent className="p-4 md:p-6 text-sm text-gray-600">
@@ -253,8 +329,8 @@ export default function RealtorDashboard() {
               };
 
               return (
-                <>
-                <TableRow key={`${project.id}-${plot.id}`} className={isMapExpanded ? 'border-b-0' : ''}>
+                <Fragment key={`${project.id}-${plot.id}`}>
+                <TableRow className={isMapExpanded ? 'border-b-0' : ''}>
                                     <TableCell>
                     <Link
                       href={`/plot/${plot.id}`}
@@ -400,7 +476,7 @@ export default function RealtorDashboard() {
                     </TableCell>
                   </TableRow>
                 )}
-                </>
+                </Fragment>
               );
             })}
           </TableBody>
@@ -497,6 +573,553 @@ export default function RealtorDashboard() {
           })}
         </div>
         </>
+      )}
+
+      {/* My Company's Listings Section */}
+      <div className="space-y-3 mt-8 pt-8 border-t border-gray-200">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <h2 className="text-base md:text-lg font-semibold text-gray-800">
+              {companyPlotsData?.companyName ? `${companyPlotsData.companyName} Listings` : "My Company's Listings"}
+            </h2>
+            <p className="text-xs md:text-sm text-gray-500">All plots where your company is listed as the agency or source</p>
+          </div>
+          
+          {/* Search Input */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by Plot ID..."
+                value={searchInputValue}
+                onChange={(e) => setSearchInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setCompanyPlotsSearch(searchInputValue);
+                    setCompanyPlotsPage(1);
+                  }
+                }}
+                className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-48 md:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setCompanyPlotsSearch(searchInputValue);
+                setCompanyPlotsPage(1);
+              }}
+            >
+              Search
+            </Button>
+            {companyPlotsSearch && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchInputValue('');
+                  setCompanyPlotsSearch('');
+                  setCompanyPlotsPage(1);
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {companyPlotsLoading ? (
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-4">
+                <div className="h-4 bg-gray-200 rounded mb-2 w-1/3"></div>
+                <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : !companyPlotsData?.items?.length ? (
+        <Card>
+          <CardContent className="p-4 md:p-6 text-sm text-gray-600">
+            {companyPlotsSearch 
+              ? `No listings found matching "${companyPlotsSearch}"`
+              : "No listings found for your company."
+            }
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Desktop Table View */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead></TableHead>
+                  <TableHead>Public Coordinates</TableHead>
+                  <TableHead>Accurate Coordinates</TableHead>
+                  <TableHead>Municipality</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>Size (m²)</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Boundary</TableHead>
+                  <TableHead>Edit</TableHead>
+                  <TableHead>Accept</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {companyPlotsData.items.map(({ plot, municipality, realtorInfo }) => {
+                  const price = plot.price !== null ? Number(plot.price) : null;
+                  const size = plot.size !== null ? Number(plot.size) : null;
+                  const isEditing = editingPlotId === plot.id;
+                  const isMapExpanded = expandedMapPlotId === plot.id;
+                  const isAccepted = !!plot.claimedByUserId;
+                  const realCoordinates = plot.realLatitude && plot.realLongitude 
+                    ? `${plot.realLatitude.toFixed(6)}, ${plot.realLongitude.toFixed(6)}` 
+                    : '-';
+                  
+                  // Cadastral data for boundary
+                  const cadastralData = (plot.enrichmentData as { cadastral?: { geometry?: CadastralGeometry; cadastral_reference?: string; label?: string; source?: string } })?.cadastral;
+                  const hasGeometry = !!cadastralData?.geometry;
+
+                  const handleEdit = () => {
+                    setEditingPlotId(plot.id);
+                    setEditValues({
+                      realLatitude: plot.realLatitude?.toString() || '',
+                      realLongitude: plot.realLongitude?.toString() || '',
+                    });
+                    // Open map if not already open
+                    if (!isMapExpanded) {
+                      setExpandedMapPlotId(plot.id);
+                    }
+                  };
+
+                  const handleCancel = () => {
+                    setEditingPlotId(null);
+                    setEditValues({ realLatitude: '', realLongitude: '' });
+                    // Don't close the map, just exit edit mode
+                  };
+
+                  const handleSave = async () => {
+                    const lat = parseFloat(editValues.realLatitude);
+                    const lng = parseFloat(editValues.realLongitude);
+                    if (isNaN(lat) || isNaN(lng)) {
+                      toast.error('Invalid coordinates');
+                      return;
+                    }
+                    try {
+                      await updateLocationMutation.mutateAsync({
+                        plotId: plot.id,
+                        realLatitude: lat,
+                        realLongitude: lng,
+                      });
+                      setEditingPlotId(null);
+                      setExpandedMapPlotId(null);
+                      utils.realtor.getMyCompanyPlots.invalidate();
+                    } catch (err) {
+                      console.error('Failed to update location:', err);
+                    }
+                  };
+                  
+                  const toggleMapExpanded = () => {
+                    if (isMapExpanded) {
+                      // Close map and cancel any editing
+                      setExpandedMapPlotId(null);
+                      setEditingPlotId(null);
+                      setEditValues({ realLatitude: '', realLongitude: '' });
+                    } else {
+                      setExpandedMapPlotId(plot.id);
+                    }
+                  };
+
+                  return (
+                    <Fragment key={`company-${plot.id}`}>
+                    <TableRow className={expandedMapPlotId === plot.id ? 'border-b-0' : ''}>
+                      <TableCell>
+                        <Link
+                          href={`/plot/${plot.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          View
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-gray-600 text-xs">
+                        {plot.latitude.toFixed(6)}, {plot.longitude.toFixed(6)}
+                      </TableCell>
+                      <TableCell className="text-gray-700 text-xs">
+                        {isEditing ? (
+                          <div className="flex gap-1">
+                            <input
+                              type="number"
+                              step="0.000001"
+                              value={editValues.realLatitude}
+                              onChange={(e) => setEditValues({ ...editValues, realLatitude: e.target.value })}
+                              className="w-24 px-1 py-0.5 border rounded text-xs"
+                              placeholder="Latitude"
+                            />
+                            <input
+                              type="number"
+                              step="0.000001"
+                              value={editValues.realLongitude}
+                              onChange={(e) => setEditValues({ ...editValues, realLongitude: e.target.value })}
+                              className="w-24 px-1 py-0.5 border rounded text-xs"
+                              placeholder="Longitude"
+                            />
+                          </div>
+                        ) : (
+                          realCoordinates
+                        )}
+                      </TableCell>
+                      <TableCell className="text-gray-700 text-xs">
+                        {municipality?.name || '-'}
+                      </TableCell>
+                      <TableCell className="text-gray-700 text-xs">
+                        {price !== null ? `€${price.toLocaleString()}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-gray-700 text-xs">
+                        {size !== null ? size.toLocaleString() : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${
+                          realtorInfo.role === 'agency' 
+                            ? 'bg-blue-100 text-blue-700' 
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {realtorInfo.role}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          onClick={toggleMapExpanded}
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+                            hasGeometry 
+                              ? 'text-green-600 hover:text-green-700 hover:bg-green-50' 
+                              : 'text-orange-600 hover:text-orange-700 hover:bg-orange-50'
+                          }`}
+                          title={hasGeometry ? 'View/edit boundary' : 'Draw boundary'}
+                        >
+                          <Map className="w-3 h-3" />
+                          {hasGeometry ? 'View' : 'Draw'}
+                          {isMapExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <div className="flex gap-1">
+                            <button onClick={handleSave} className="text-green-600 hover:text-green-800" title="Save">
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button onClick={handleCancel} className="text-red-600 hover:text-red-800" title="Cancel">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={handleEdit} className="text-gray-600 hover:text-gray-800" title="Edit">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <label className="flex items-center gap-2 text-xs text-gray-700">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300"
+                            checked={isAccepted}
+                            disabled={acceptCompanyPlotMutation.isPending || unacceptCompanyPlotMutation.isPending}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                acceptCompanyPlotMutation.mutate({ plotId: plot.id });
+                              } else {
+                                unacceptCompanyPlotMutation.mutate({ plotId: plot.id });
+                              }
+                            }}
+                          />
+                          <span className={isAccepted ? 'text-green-600 font-medium' : 'text-gray-600'}>
+                            {isAccepted ? 'Accepted' : 'Accept'}
+                          </span>
+                        </label>
+                      </TableCell>
+                    </TableRow>
+                    {isMapExpanded && (
+                      <TableRow>
+                        <TableCell colSpan={10} className="p-0 bg-gray-50">
+                          <div className="p-4">
+                            <CadastralPolygonEditor
+                              initialGeometry={cadastralData?.geometry}
+                              center={{
+                                latitude: plot.realLatitude || plot.latitude,
+                                longitude: plot.realLongitude || plot.longitude,
+                              }}
+                              onSave={(geometry) => {
+                                updateGeometryMutation.mutate({
+                                  plotId: plot.id,
+                                  geometry,
+                                });
+                              }}
+                              isMarkerEditing={isEditing}
+                              onMarkerPositionChange={(newCenter: { latitude: number; longitude: number }) => {
+                                setEditValues({
+                                  realLatitude: newCenter.latitude.toString(),
+                                  realLongitude: newCenter.longitude.toString(),
+                                });
+                              }}
+                              readOnly={false}
+                              showArea={true}
+                              height="400px"
+                              cadastralInfo={{
+                                reference: cadastralData?.cadastral_reference,
+                                label: cadastralData?.label,
+                                source: cadastralData?.source,
+                              }}
+                              showCadastreLayer={true}
+                              country={(municipality?.country === 'ES' || municipality?.country === 'PT') ? municipality.country : 'PT'}
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-3">
+            {companyPlotsData.items.map(({ plot, municipality, realtorInfo }) => {
+              const price = plot.price !== null ? Number(plot.price) : null;
+              const size = plot.size !== null ? Number(plot.size) : null;
+              const hasVerifiedLocation = !!(plot.realLatitude && plot.realLongitude);
+              const isMapExpanded = expandedMapPlotId === plot.id;
+              const isAccepted = !!plot.claimedByUserId;
+              const cadastralData = (plot.enrichmentData as { cadastral?: { geometry?: CadastralGeometry; cadastral_reference?: string; label?: string; source?: string } })?.cadastral;
+              const hasGeometry = !!cadastralData?.geometry;
+
+              return (
+                <Card key={`mobile-company-${plot.id}`}>
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <MapPin className="w-3 h-3" />
+                          {municipality?.name || 'Unknown'}
+                        </div>
+                        <div className="font-semibold text-gray-900 text-sm">
+                          {price !== null ? `€${price.toLocaleString()}` : 'Price N/A'}
+                        </div>
+                        {size !== null && (
+                          <div className="text-xs text-gray-500">{size.toLocaleString()} m²</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${
+                          realtorInfo.role === 'agency' 
+                            ? 'bg-blue-100 text-blue-700' 
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {realtorInfo.role}
+                        </span>
+                        {hasVerifiedLocation && (
+                          <span className="inline-flex items-center gap-1 text-green-600 text-xs">
+                            <Check className="w-3 h-3" />
+                            Verified
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Accept Checkbox */}
+                    <div className="flex items-center justify-end">
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300"
+                          checked={isAccepted}
+                          disabled={acceptCompanyPlotMutation.isPending || unacceptCompanyPlotMutation.isPending}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              acceptCompanyPlotMutation.mutate({ plotId: plot.id });
+                            } else {
+                              unacceptCompanyPlotMutation.mutate({ plotId: plot.id });
+                            }
+                          }}
+                        />
+                        <span className={isAccepted ? 'text-green-600 font-medium' : 'text-gray-600'}>
+                          {isAccepted ? 'Accepted' : 'Accept'}
+                        </span>
+                      </label>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                      <Link
+                        href={`/plot/${plot.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        View Plot
+                      </Link>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setExpandedMapPlotId(isMapExpanded ? null : plot.id)}
+                          className={`inline-flex items-center gap-1 text-xs ${
+                            hasGeometry ? 'text-green-600' : 'text-orange-600'
+                          }`}
+                        >
+                          <Map className="w-3 h-3" />
+                          {hasGeometry ? 'View' : 'Draw'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingPlotId(plot.id);
+                            setEditValues({
+                              realLatitude: plot.realLatitude?.toString() || '',
+                              realLongitude: plot.realLongitude?.toString() || '',
+                            });
+                            setExpandedMapPlotId(plot.id);
+                          }}
+                          className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          Verify Location
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Expandable Map for Mobile */}
+                    {isMapExpanded && (
+                      <div className="pt-2 border-t border-gray-100">
+                        <CadastralPolygonEditor
+                          initialGeometry={cadastralData?.geometry}
+                          center={{
+                            latitude: plot.realLatitude || plot.latitude,
+                            longitude: plot.realLongitude || plot.longitude,
+                          }}
+                          onSave={(geometry) => {
+                            updateGeometryMutation.mutate({
+                              plotId: plot.id,
+                              geometry,
+                            });
+                          }}
+                          isMarkerEditing={editingPlotId === plot.id}
+                          onMarkerPositionChange={(newCenter: { latitude: number; longitude: number }) => {
+                            setEditValues({
+                              realLatitude: newCenter.latitude.toString(),
+                              realLongitude: newCenter.longitude.toString(),
+                            });
+                          }}
+                          readOnly={false}
+                          showArea={true}
+                          height="300px"
+                          cadastralInfo={{
+                            reference: cadastralData?.cadastral_reference,
+                            label: cadastralData?.label,
+                            source: cadastralData?.source,
+                          }}
+                          showCadastreLayer={true}
+                          country={(municipality?.country === 'ES' || municipality?.country === 'PT') ? municipality.country : 'PT'}
+                        />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Pagination */}
+          {companyPlotsData.pagination.totalCount > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
+              <div className="text-xs text-gray-500">
+                Showing {((companyPlotsPage - 1) * companyPlotsLimit) + 1} - {Math.min(companyPlotsPage * companyPlotsLimit, companyPlotsData.pagination.totalCount)} of {companyPlotsData.pagination.totalCount} listings
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCompanyPlotsPage(p => Math.max(1, p - 1))}
+                  disabled={companyPlotsPage <= 1}
+                  className="h-8 px-2"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1">Previous</span>
+                </Button>
+                <span className="text-sm text-gray-600">
+                  Page {companyPlotsPage} of {companyPlotsData.pagination.totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCompanyPlotsPage(p => Math.min(companyPlotsData.pagination.totalPages, p + 1))}
+                  disabled={companyPlotsPage >= companyPlotsData.pagination.totalPages}
+                  className="h-8 px-2"
+                >
+                  <span className="hidden sm:inline mr-1">Next</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Plot Not Found Error Modal */}
+      {showNotFoundError && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={clearSearchAndUrl}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="relative p-6 pb-4">
+              <button
+                onClick={clearSearchAndUrl}
+                className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+              
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-red-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Plot Not Found
+                </h2>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="px-6 pb-6">
+              <p className="text-gray-700">
+                The plot <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-sm">{urlPlotId}</span> could not be found in the plots managed by{' '}
+                <span className="font-semibold">{companyPlotsData?.companyName || 'your company'}</span>.
+              </p>
+              <p className="text-gray-500 text-sm mt-3">
+                This plot may not be listed under your agency, or the plot ID may be incorrect.
+              </p>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="px-6 pb-6">
+              <Button
+                onClick={clearSearchAndUrl}
+                className="w-full bg-gray-900 hover:bg-gray-800 text-white"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

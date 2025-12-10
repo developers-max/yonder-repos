@@ -68,6 +68,12 @@ export const enrichedPlots = pgTable(__enrichedPlotsTableName, {
   realLatitude: doublePrecision("real_latitude"),
   realLongitude: doublePrecision("real_longitude"),
   realAddress: text("real_address"),
+  // Claimed realtor contact info (set when realtor claims/accepts the plot)
+  claimedByUserId: text("claimed_by_user_id"),
+  claimedByName: text("claimed_by_name"),
+  claimedByEmail: text("claimed_by_email"),
+  claimedByPhone: text("claimed_by_phone"),
+  claimedAt: text("claimed_at"), // ISO timestamp
   // Listing information from Casafari
   description: text(), // Description from listing
   timeInMarket: integer("time_in_market"), // Days on market
@@ -128,6 +134,12 @@ export const enrichedPlotsStage = pgTable("enriched_plots_stage", {
   realLatitude: doublePrecision("real_latitude"),
   realLongitude: doublePrecision("real_longitude"),
   realAddress: text("real_address"),
+  // Claimed realtor contact info (set when realtor claims/accepts the plot)
+  claimedByUserId: text("claimed_by_user_id"),
+  claimedByName: text("claimed_by_name"),
+  claimedByEmail: text("claimed_by_email"),
+  claimedByPhone: text("claimed_by_phone"),
+  claimedAt: text("claimed_at"), // ISO timestamp
   // Listing information from Casafari
   description: text(), // Description from listing
   timeInMarket: integer("time_in_market"), // Days on market
