@@ -35,6 +35,21 @@ type Plot = PlotRouterOutput['plots']['getPlot'] & {
   price: number;
   size: number | null;
   plotReportJson?: unknown;
+  municipality: {
+    id: number;
+    name: string;
+    district: string | null;
+    country: string | null;
+    website: string | null;
+    pdmDocuments: {
+      documents?: Array<{
+        id: string;
+        documentType: string;
+        url: string;
+        name?: string;
+      }>;
+    } | null;
+  } | null;
 };
 
 // Realtors returned by backend for a plot

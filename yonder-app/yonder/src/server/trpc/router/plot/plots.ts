@@ -377,6 +377,7 @@ export const plotsRouter = router({
             claimedByEmail: enrichedPlots.claimedByEmail,
             claimedByPhone: enrichedPlots.claimedByPhone,
             claimedAt: enrichedPlots.claimedAt,
+            primaryListingLink: enrichedPlots.primaryListingLink,
             municipality: {
               id: municipalities.id,
               name: municipalities.name,
@@ -442,6 +443,7 @@ export const plotsRouter = router({
           claimedByEmail: plot[0].claimedByEmail,
           claimedByPhone: plot[0].claimedByPhone,
           claimedAt: plot[0].claimedAt,
+          primaryListingLink: plot[0].primaryListingLink,
           municipality: plot[0].municipality,
           realtors,
         };

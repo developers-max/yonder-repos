@@ -159,6 +159,7 @@ async function ensureStageColumnsExist(client: any) {
   await client.query('ALTER TABLE enriched_plots_stage ADD COLUMN IF NOT EXISTS size NUMERIC');
   await client.query('ALTER TABLE enriched_plots_stage ADD COLUMN IF NOT EXISTS price NUMERIC');
   await client.query('ALTER TABLE enriched_plots_stage ADD COLUMN IF NOT EXISTS municipality_id INTEGER');
+  await client.query('ALTER TABLE enriched_plots_stage ADD COLUMN IF NOT EXISTS primary_listing_link TEXT');
   
   console.log('Stage table columns verified.');
 }

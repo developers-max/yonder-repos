@@ -79,6 +79,7 @@ export const enrichedPlots = pgTable(__enrichedPlotsTableName, {
   timeInMarket: integer("time_in_market"), // Days on market
   status: text().default('active'), // Listing status: active, sold, pending, etc.
   type: text(), // Property type: urban_plot, rustic_plot, etc.
+  primaryListingLink: text("primary_listing_link"), // URL to the original listing
 }, (table) => [
   index("enriched_plots_geom_idx").using("gist", table.geom.asc().nullsLast().op("gist_geometry_ops_2d")),
   index("idx_enriched_plots_size").using("btree", table.size.asc().nullsLast().op("numeric_ops")),
@@ -145,6 +146,7 @@ export const enrichedPlotsStage = pgTable("enriched_plots_stage", {
   timeInMarket: integer("time_in_market"), // Days on market
   status: text().default('active'), // Listing status: active, sold, pending, etc.
   type: text(), // Property type: urban_plot, rustic_plot, etc.
+  primaryListingLink: text("primary_listing_link"), // URL to the original listing
 }, (table) => [
   index("enriched_plots_stage_geom_idx").using("gist", table.geom.asc().nullsLast().op("gist_geometry_ops_2d")),
   index("idx_enriched_plots_stage_size").using("btree", table.size.asc().nullsLast().op("numeric_ops")),

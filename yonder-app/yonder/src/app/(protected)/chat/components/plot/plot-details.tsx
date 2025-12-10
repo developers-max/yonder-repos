@@ -65,6 +65,8 @@ type StrongPlot = RouterOutputs['plots']['getPlot'] & {
   claimedByEmail: string | null;
   claimedByPhone: string | null;
   claimedAt: string | null;
+  // Primary listing link
+  primaryListingLink: string | null;
   // Municipality data
   municipality: {
     id: number;
@@ -72,7 +74,14 @@ type StrongPlot = RouterOutputs['plots']['getPlot'] & {
     district: string | null;
     country: string | null;
     website: string | null;
-    pdmDocuments: unknown;
+    pdmDocuments: {
+      documents?: Array<{
+        id: string;
+        documentType: string;
+        url: string;
+        name?: string;
+      }>;
+    } | null;
   } | null;
 };
 
@@ -407,9 +416,9 @@ export default function PlotDetails({
 
                 {/* Content: Two Column Layout */}
                 <div className="px-4 pb-4">
-                  <div className="flex flex-col lg:flex-row gap-6">
+                  <div className="flex flex-col lg:flex-row gap-4">
                     {/* Left Column - Plot Details */}
-                    <div className="flex-1 space-y-4">
+                    <div className="flex-1 space-y-3">
                       {/* Title */}
                       <div>
                         <h1 className="text-xl md:text-2xl font-bold text-gray-900">
@@ -420,45 +429,47 @@ export default function PlotDetails({
                         </p>
                       </div>
 
-                      {/* Price */}
-                      <div className="text-2xl md:text-3xl font-bold text-gray-900">
-                        €{plot.price ? plot.price.toLocaleString() : 'N/A'}
+                      {/* Price and Size Row */}
+                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <span className="text-2xl md:text-3xl font-bold text-gray-900">
+                          €{plot.price ? plot.price.toLocaleString() : 'N/A'}
+                        </span>
+                        <span className="text-sm md:text-base text-gray-500">
+                          {plot.size ? `${plot.size.toLocaleString()} m²` : ''}
+                          {plot.price && plot.size && ` · €${Math.round(plot.price / plot.size).toLocaleString()}/m²`}
+                        </span>
                       </div>
 
-                      {/* Size and Price per m² */}
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm md:text-base text-gray-600">
-                        <span>{plot.size ? `${plot.size.toLocaleString()} m²` : 'Size N/A'}</span>
-                        {plot.price && plot.size && (
-                          <>
-                            <span>•</span>
-                            <span>€{Math.round(plot.price / plot.size).toLocaleString()}/m²</span>
-                          </>
-                        )}
-                        {strongPlot.type && (
-                          <>
-                            <span className="hidden sm:inline">•</span>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                              {strongPlot.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            </span>
-                          </>
-                        )}
-                      </div>
+                      {/* Type Badge */}
+                      {strongPlot.type && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                            {strongPlot.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Description */}
                       {strongPlot.description && (
-                        <p className="text-gray-600 text-sm leading-relaxed">
-                          {String(strongPlot.description)}
-                        </p>
+                        <div className="max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+                          <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
+                            {String(strongPlot.description)}
+                          </p>
+                        </div>
                       )}
 
-                      {/* View Original Link - Hidden for now */}
-                      {/* <a 
-                        href="#" 
-                        className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
-                      >
-                        View original on Idealista
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a> */}
+                      {/* View Original Listing Link */}
+                      {strongPlot.primaryListingLink && (
+                        <a 
+                          href={strongPlot.primaryListingLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          View original listing
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                     </div>
 
                     {/* Right Column - Listed By Card */}
