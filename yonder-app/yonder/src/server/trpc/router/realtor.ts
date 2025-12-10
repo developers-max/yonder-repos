@@ -137,6 +137,8 @@ export const realtorRouter = router({
           plotRealLatitude: enrichedPlots.realLatitude,
           plotRealLongitude: enrichedPlots.realLongitude,
           plotRealAddress: enrichedPlots.realAddress,
+          // Claimed status
+          plotClaimedByUserId: enrichedPlots.claimedByUserId,
         })
         .from(organizationPlotsTable)
         .innerJoin(
@@ -177,6 +179,7 @@ export const realtorRouter = router({
             realLatitude: row.plotRealLatitude,
             realLongitude: row.plotRealLongitude,
             realAddress: row.plotRealAddress,
+            claimedByUserId: row.plotClaimedByUserId,
           },
           organizationPlot: row.orgPlot,
           municipality: {
@@ -1073,5 +1076,263 @@ export const realtorRouter = router({
           totalPages: Math.ceil(totalCount / limit),
         },
       };
+    }),
+
+  // Search for any plot by ID or listing URL (not restricted to company)
+  searchAnyPlot: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().min(1),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      await requireRealtor(ctx.user.id);
+
+      const { query } = input;
+      const trimmedQuery = query.trim();
+
+      // Search by exact plot ID or by listing URL containing the query
+      const plotsResult = await db.execute(sql`
+        SELECT
+          ep.id as plot_id,
+          ep.price,
+          ep.size,
+          ep.images,
+          ep.latitude,
+          ep.longitude,
+          ep.enrichment_data as "enrichmentData",
+          ep.real_latitude as "realLatitude",
+          ep.real_longitude as "realLongitude",
+          ep.real_address as "realAddress",
+          ep.claimed_by_user_id as "claimedByUserId",
+          ep.claimed_at as "claimedAt",
+          ep.primary_listing_link as "primaryListingLink",
+          m.name as municipality_name,
+          m.district as municipality_district,
+          m.country as municipality_country
+        FROM enriched_plots ep
+        LEFT JOIN municipalities m ON m.id = ep.municipality_id
+        WHERE ep.id::text = ${trimmedQuery}
+           OR ep.primary_listing_link ILIKE ${'%' + trimmedQuery + '%'}
+        LIMIT 1
+      `);
+
+      const rows = hasRowsResult(plotsResult) ? plotsResult.rows : [];
+      
+      if (rows.length === 0) {
+        return { plot: null };
+      }
+
+      type PlotRow = {
+        plot_id: string;
+        price: string | null;
+        size: string | null;
+        images: string[] | null;
+        latitude: number;
+        longitude: number;
+        enrichmentData: Record<string, unknown> | null;
+        realLatitude: number | null;
+        realLongitude: number | null;
+        realAddress: string | null;
+        claimedByUserId: string | null;
+        claimedAt: string | null;
+        primaryListingLink: string | null;
+        municipality_name: string | null;
+        municipality_district: string | null;
+        municipality_country: string | null;
+      };
+
+      const row = rows[0] as PlotRow;
+
+      return {
+        plot: {
+          id: row.plot_id,
+          price: row.price,
+          size: row.size,
+          images: row.images,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          enrichmentData: row.enrichmentData,
+          realLatitude: row.realLatitude,
+          realLongitude: row.realLongitude,
+          realAddress: row.realAddress,
+          claimedByUserId: row.claimedByUserId,
+          claimedAt: row.claimedAt,
+          primaryListingLink: row.primaryListingLink,
+          municipality: {
+            name: row.municipality_name ?? null,
+            district: row.municipality_district ?? null,
+            country: row.municipality_country ?? 'PT',
+          },
+        },
+      };
+    }),
+
+  // Check if a plot belongs to the realtor's company
+  checkPlotOwnership: protectedProcedure
+    .input(
+      z.object({
+        plotId: z.string().uuid(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      await requireRealtor(ctx.user.id);
+
+      // Get realtor's email domain
+      const [user] = await db
+        .select({ email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, ctx.user.id))
+        .limit(1);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const email = String(user.email || '').toLowerCase();
+      const domain = email.includes('@') ? email.split('@')[1] : '';
+
+      if (!domain) {
+        return { belongsToCompany: false, companyName: null };
+      }
+
+      // Check if plot is linked to a realtor from this domain
+      const result = await db.execute(sql`
+        SELECT r.company_name
+        FROM plots_stage_realtors psr
+        JOIN realtors r ON r.id = psr.realtor_id
+        WHERE psr.plot_id = ${input.plotId}
+          AND psr.role IN ('agency', 'source')
+          AND (r.website_url ILIKE ${'%' + domain + '%'} OR r.email ILIKE ${'%@' + domain})
+        LIMIT 1
+      `);
+
+      const rows = hasRowsResult(result) ? result.rows : [];
+      
+      if (rows.length > 0) {
+        return {
+          belongsToCompany: true,
+          companyName: (rows[0] as { company_name: string }).company_name,
+        };
+      }
+
+      return { belongsToCompany: false, companyName: null };
+    }),
+
+  // Claim any plot (not restricted to company - used from Search Any Plot)
+  claimAnyPlot: protectedProcedure
+    .input(
+      z.object({
+        plotId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireRealtor(ctx.user.id);
+
+      // Get realtor's full user info
+      const [user] = await db
+        .select({ 
+          id: usersTable.id,
+          name: usersTable.name,
+          email: usersTable.email,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.id, ctx.user.id))
+        .limit(1);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Verify plot exists
+      const plotExists = await db.execute(
+        sql`SELECT 1 FROM enriched_plots WHERE id = ${input.plotId} LIMIT 1`
+      );
+
+      if (!hasRowsResult(plotExists) || plotExists.rows.length === 0) {
+        throw new Error('Plot not found');
+      }
+
+      // Claim the plot by setting realtor contact info
+      await db
+        .update(enrichedPlotsStage)
+        .set({
+          claimedByUserId: user.id,
+          claimedByName: user.name,
+          claimedByEmail: user.email,
+          claimedAt: new Date().toISOString(),
+        })
+        .where(eq(enrichedPlotsStage.id, input.plotId));
+
+      // Refresh materialized view if using prod tables
+      const useProdTables = (process.env.PLOTS_TABLE_ENV || 'stage').toLowerCase() === 'prod';
+      if (useProdTables) {
+        try {
+          await db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY enriched_plots`);
+        } catch (refreshError) {
+          console.warn('Concurrent refresh failed, trying non-concurrent:', refreshError);
+          try {
+            await db.execute(sql`REFRESH MATERIALIZED VIEW enriched_plots`);
+          } catch (e) {
+            console.error('Failed to refresh materialized view:', e);
+          }
+        }
+      }
+
+      return { success: true, plotId: input.plotId };
+    }),
+
+  // Unclaim any plot (used from Search Any Plot)
+  unclaimAnyPlot: protectedProcedure
+    .input(
+      z.object({
+        plotId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireRealtor(ctx.user.id);
+
+      // Verify plot exists and is claimed by this user
+      const plotCheck = await db.execute(
+        sql`SELECT claimed_by_user_id FROM enriched_plots WHERE id = ${input.plotId} LIMIT 1`
+      );
+
+      if (!hasRowsResult(plotCheck) || plotCheck.rows.length === 0) {
+        throw new Error('Plot not found');
+      }
+
+      const plot = plotCheck.rows[0] as { claimed_by_user_id: string | null };
+      if (plot.claimed_by_user_id !== ctx.user.id) {
+        throw new Error('You can only unclaim plots you have claimed');
+      }
+
+      // Unclaim the plot
+      await db
+        .update(enrichedPlotsStage)
+        .set({
+          claimedByUserId: null,
+          claimedByName: null,
+          claimedByEmail: null,
+          claimedByPhone: null,
+          claimedAt: null,
+        })
+        .where(eq(enrichedPlotsStage.id, input.plotId));
+
+      // Refresh materialized view if using prod tables
+      const useProdTables = (process.env.PLOTS_TABLE_ENV || 'stage').toLowerCase() === 'prod';
+      if (useProdTables) {
+        try {
+          await db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY enriched_plots`);
+        } catch (refreshError) {
+          console.warn('Concurrent refresh failed, trying non-concurrent:', refreshError);
+          try {
+            await db.execute(sql`REFRESH MATERIALIZED VIEW enriched_plots`);
+          } catch (e) {
+            console.error('Failed to refresh materialized view:', e);
+          }
+        }
+      }
+
+      return { success: true, plotId: input.plotId };
     }),
 });

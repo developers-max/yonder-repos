@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from '@/lib/auth/auth-client';
 import PlotDetails from '@/app/(protected)/chat/components/plot/plot-details';
@@ -14,6 +14,13 @@ export default function PlotPage() {
   const { data: session, isPending } = useSession();
   const [showAuthDialog, setShowAuthDialog] = useState(false);
 
+  // If user is already logged in, redirect directly to chat
+  useEffect(() => {
+    if (!isPending && session?.session) {
+      router.push(`/chat?plotId=${plotId}`);
+    }
+  }, [isPending, session, router, plotId]);
+
   const handleStartChat = () => {
     if (session?.session) {
       // User is logged in, redirect to chat with plotId
@@ -24,8 +31,8 @@ export default function PlotPage() {
     }
   };
 
-  // Show loading state while checking session
-  if (isPending) {
+  // Show loading state while checking session or redirecting logged-in users
+  if (isPending || session?.session) {
     return (
       <div className="min-h-screen bg-secondary flex items-center justify-center">
         <div className="text-center">
