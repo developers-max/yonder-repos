@@ -1335,4 +1335,131 @@ export const realtorRouter = router({
 
       return { success: true, plotId: input.plotId };
     }),
+
+  // Get plots claimed by this realtor that are NOT in any project request
+  getMyClaimedPlots: protectedProcedure
+    .input(
+      z.object({
+        page: z.number().default(1),
+        limit: z.number().default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      await requireRealtor(ctx.user.id);
+
+      const { page, limit } = input;
+      const offset = (page - 1) * limit;
+
+      // Get realtor's email for checking project assignments
+      const [user] = await db
+        .select({ email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, ctx.user.id))
+        .limit(1);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const email = String(user.email || '').toLowerCase();
+      const domain = email.includes('@') ? email.split('@')[1] : '';
+
+      // Get plots claimed by this user that are NOT in organization_plots with matching realtor email
+      const plotsResult = await db.execute(sql`
+        SELECT 
+          ep.id,
+          ep.price,
+          ep.size,
+          ep.images,
+          ep.latitude,
+          ep.longitude,
+          ep.enrichment_data as "enrichmentData",
+          ep.real_latitude as "realLatitude",
+          ep.real_longitude as "realLongitude",
+          ep.real_address as "realAddress",
+          ep.claimed_by_user_id as "claimedByUserId",
+          ep.claimed_at as "claimedAt",
+          ep.primary_listing_link as "primaryListingLink",
+          m.name as municipality_name,
+          m.district as municipality_district,
+          m.country as municipality_country
+        FROM enriched_plots ep
+        LEFT JOIN municipalities m ON m.id = ep.municipality_id
+        WHERE ep.claimed_by_user_id = ${ctx.user.id}
+          AND NOT EXISTS (
+            SELECT 1 FROM organization_plots op 
+            WHERE op.plot_id = ep.id 
+              AND (op.realtor_email = ${user.email} OR op.realtor_email ILIKE ${'%@' + domain})
+          )
+        ORDER BY ep.claimed_at DESC NULLS LAST
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `);
+
+      // Count total
+      const countResult = await db.execute(sql`
+        SELECT COUNT(*) as count
+        FROM enriched_plots ep
+        WHERE ep.claimed_by_user_id = ${ctx.user.id}
+          AND NOT EXISTS (
+            SELECT 1 FROM organization_plots op 
+            WHERE op.plot_id = ep.id 
+              AND (op.realtor_email = ${user.email} OR op.realtor_email ILIKE ${'%@' + domain})
+          )
+      `);
+
+      const rows = hasRowsResult(plotsResult) ? plotsResult.rows : [];
+      const countRows = hasRowsResult(countResult) ? countResult.rows : [];
+      const totalCount = Number((countRows[0] as { count: string })?.count || 0);
+
+      type PlotRow = {
+        id: string;
+        price: string | null;
+        size: string | null;
+        images: string[] | null;
+        latitude: number;
+        longitude: number;
+        enrichmentData: Record<string, unknown> | null;
+        realLatitude: number | null;
+        realLongitude: number | null;
+        realAddress: string | null;
+        claimedByUserId: string | null;
+        claimedAt: string | null;
+        primaryListingLink: string | null;
+        municipality_name: string | null;
+        municipality_district: string | null;
+        municipality_country: string | null;
+      };
+
+      return {
+        items: (rows as PlotRow[]).map((row) => ({
+          plot: {
+            id: row.id,
+            price: row.price,
+            size: row.size,
+            images: row.images,
+            latitude: row.latitude,
+            longitude: row.longitude,
+            enrichmentData: row.enrichmentData,
+            realLatitude: row.realLatitude,
+            realLongitude: row.realLongitude,
+            realAddress: row.realAddress,
+            claimedByUserId: row.claimedByUserId,
+            claimedAt: row.claimedAt,
+            primaryListingLink: row.primaryListingLink,
+          },
+          municipality: {
+            name: row.municipality_name ?? null,
+            district: row.municipality_district ?? null,
+            country: row.municipality_country ?? 'PT',
+          },
+        })),
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+        },
+      };
+    }),
 });
