@@ -72,6 +72,12 @@ export default function RealtorDashboard() {
     searchPlotId: companyPlotsSearch || undefined,
   });
 
+  // Query for claimed plots not in project requests
+  const { data: claimedPlotsData, isLoading: claimedPlotsLoading } = trpc.realtor.getMyClaimedPlots.useQuery({ 
+    page: 1, 
+    limit: 50,
+  });
+
   // Handle URL plotId parameter - pre-fill "Search Any Plot" and trigger it
   useEffect(() => {
     if (urlPlotId && !anyPlotSearchQuery) {
@@ -139,6 +145,7 @@ export default function RealtorDashboard() {
       }
       utils.realtor.searchAnyPlot.invalidate();
       utils.realtor.getAssignedOutreachRequests.invalidate();
+      utils.realtor.getMyClaimedPlots.invalidate();
       toast.success('Plot claimed successfully');
     },
     onError: (error) => {
@@ -164,6 +171,7 @@ export default function RealtorDashboard() {
       }
       utils.realtor.searchAnyPlot.invalidate();
       utils.realtor.getAssignedOutreachRequests.invalidate();
+      utils.realtor.getMyClaimedPlots.invalidate();
       toast.success('Plot unclaimed successfully');
     },
     onError: (error) => {
@@ -337,7 +345,7 @@ export default function RealtorDashboard() {
       {/* Project Requests Section */}
       <div className="space-y-3">
         <h2 className="text-base md:text-lg font-semibold text-gray-800">Project Requests</h2>
-        <p className="text-xs md:text-sm text-gray-500">Plots that buyers have added to their projects and assigned to you</p>
+        <p className="text-xs md:text-sm text-gray-500">Plots that buyers have added to their projects and assigned to: </p>
       </div>
 
       {items.length === 0 ? (
@@ -974,6 +982,216 @@ export default function RealtorDashboard() {
               </div>
             </CardContent>
           </Card>
+        )}
+      </div>
+
+      {/* My Claimed Plots Section */}
+      <div className="space-y-3 mt-8 pt-8 border-t border-gray-200">
+        <div>
+          <h2 className="text-base md:text-lg font-semibold text-gray-800">My Claimed Plots</h2>
+          <p className="text-xs md:text-sm text-gray-500">Plots you have claimed that are not part of any project request</p>
+        </div>
+
+        {claimedPlotsLoading && (
+          <Card className="animate-pulse">
+            <CardContent className="p-4">
+              <div className="h-4 bg-gray-200 rounded mb-2 w-1/3"></div>
+              <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!claimedPlotsLoading && (!claimedPlotsData?.items || claimedPlotsData.items.length === 0) && (
+          <Card>
+            <CardContent className="p-4 md:p-6 text-sm text-gray-600">
+              You haven&apos;t claimed any plots yet. Use the search above to find and claim plots.
+            </CardContent>
+          </Card>
+        )}
+
+        {claimedPlotsData?.items && claimedPlotsData.items.length > 0 && (
+          <div className="space-y-2">
+            {claimedPlotsData.items.map(({ plot, municipality }) => (
+              <Card key={plot.id} className="border border-green-200 bg-green-50/30">
+                <CardContent className="p-3 md:p-4">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col md:flex-row md:items-center gap-3">
+                      {/* Plot Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-mono text-gray-500 truncate">{plot.id}</span>
+                          <Link
+                            href={`/plot/${plot.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            View
+                          </Link>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-gray-400" />
+                            <span className="text-gray-700">{municipality?.name || 'Unknown'}</span>
+                          </div>
+                          {plot.price && (
+                            <span className="font-medium text-gray-900">€{Number(plot.price).toLocaleString()}</span>
+                          )}
+                          {plot.size && (
+                            <span className="text-gray-600">{Number(plot.size).toLocaleString()} m²</span>
+                          )}
+                        </div>
+                        {plot.primaryListingLink && (
+                          <a 
+                            href={plot.primaryListingLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline truncate block mt-1"
+                          >
+                            {plot.primaryListingLink}
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-green-600 font-medium">✓ Claimed</span>
+                        {editingPlotId === plot.id ? (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                step="0.000001"
+                                value={editValues.realLatitude}
+                                onChange={(e) => setEditValues({ ...editValues, realLatitude: e.target.value })}
+                                className="w-24 px-2 py-1 border rounded text-xs"
+                                placeholder="Latitude"
+                              />
+                              <input
+                                type="number"
+                                step="0.000001"
+                                value={editValues.realLongitude}
+                                onChange={(e) => setEditValues({ ...editValues, realLongitude: e.target.value })}
+                                className="w-24 px-2 py-1 border rounded text-xs"
+                                placeholder="Longitude"
+                              />
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const lat = parseFloat(editValues.realLatitude);
+                                const lng = parseFloat(editValues.realLongitude);
+                                if (isNaN(lat) || isNaN(lng)) {
+                                  toast.error('Invalid coordinates');
+                                  return;
+                                }
+                                try {
+                                  await updateLocationMutation.mutateAsync({
+                                    plotId: plot.id,
+                                    realLatitude: lat,
+                                    realLongitude: lng,
+                                  });
+                                  setEditingPlotId(null);
+                                  setExpandedMapPlotId(null);
+                                  utils.realtor.getMyClaimedPlots.invalidate();
+                                } catch (err) {
+                                  console.error('Failed to update location:', err);
+                                }
+                              }}
+                              className="text-xs text-green-600 border-green-300"
+                            >
+                              <Check className="w-3 h-3 mr-1" />
+                              Save
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingPlotId(null);
+                                setExpandedMapPlotId(null);
+                                setEditValues({ realLatitude: '', realLongitude: '' });
+                              }}
+                              className="text-xs"
+                            >
+                              <X className="w-3 h-3 mr-1" />
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingPlotId(plot.id);
+                                setEditValues({
+                                  realLatitude: plot.realLatitude?.toString() || '',
+                                  realLongitude: plot.realLongitude?.toString() || '',
+                                });
+                                setExpandedMapPlotId(plot.id);
+                              }}
+                              className="text-xs"
+                            >
+                              <Pencil className="w-3 h-3 mr-1" />
+                              Edit Coordinates
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => unclaimAnyPlotMutation.mutate({ plotId: plot.id })}
+                              disabled={unclaimAnyPlotMutation.isPending}
+                              className="text-xs text-red-600 border-red-200 hover:bg-red-50"
+                            >
+                              <X className="w-3 h-3 mr-1" />
+                              Unclaim
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Map Editor for coordinates */}
+                    {expandedMapPlotId === plot.id && (
+                      <div className="pt-3 border-t border-green-200">
+                        <CadastralPolygonEditor
+                          initialGeometry={(plot.enrichmentData as any)?.cadastral?.geometry}
+                          center={{
+                            latitude: plot.realLatitude || plot.latitude,
+                            longitude: plot.realLongitude || plot.longitude,
+                          }}
+                          onSave={(geometry) => {
+                            updateGeometryMutation.mutate({
+                              plotId: plot.id,
+                              geometry,
+                            });
+                          }}
+                          isMarkerEditing={editingPlotId === plot.id}
+                          onMarkerPositionChange={(newCenter: { latitude: number; longitude: number }) => {
+                            setEditValues({
+                              realLatitude: newCenter.latitude.toString(),
+                              realLongitude: newCenter.longitude.toString(),
+                            });
+                          }}
+                          readOnly={false}
+                          showArea={true}
+                          height="350px"
+                          cadastralInfo={{
+                            reference: (plot.enrichmentData as any)?.cadastral?.cadastral_reference,
+                            label: (plot.enrichmentData as any)?.cadastral?.label,
+                            source: (plot.enrichmentData as any)?.cadastral?.source,
+                          }}
+                          showCadastreLayer={true}
+                          country={(municipality?.country === 'ES' || municipality?.country === 'PT') ? municipality.country : 'PT'}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
       </div>
 
