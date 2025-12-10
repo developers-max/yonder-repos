@@ -348,7 +348,10 @@ export default function RealtorDashboard() {
       {/* Project Requests Section */}
       <div className="space-y-3">
         <h2 className="text-base md:text-lg font-semibold text-gray-800">Project Requests</h2>
-        <p className="text-xs md:text-sm text-gray-500">Plots that buyers have added to their projects and assigned to: </p>
+        <p className="text-xs md:text-sm text-gray-500">
+          Plots that buyers have added to their projects and assigned to{' '}
+          <span className="font-medium text-gray-700">{companyPlotsData?.companyName || 'your company'}</span>
+        </p>
       </div>
 
       {items.length === 0 ? (
