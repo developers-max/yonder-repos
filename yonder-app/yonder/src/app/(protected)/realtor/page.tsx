@@ -18,6 +18,7 @@ export default function RealtorDashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlPlotId = searchParams.get('plotId');
+  const urlPlotIdProcessedRef = useRef(false);
   
   // Function to clear URL params and search state
   const clearSearchAndUrl = useCallback(() => {
@@ -78,13 +79,15 @@ export default function RealtorDashboard() {
     limit: 50,
   });
 
-  // Handle URL plotId parameter - pre-fill "Search Any Plot" and trigger it
+  // Handle URL plotId parameter - pre-fill "Search Any Plot" and trigger it (only once on mount)
   useEffect(() => {
-    if (urlPlotId && !anyPlotSearchQuery) {
+    if (urlPlotId && !urlPlotIdProcessedRef.current) {
+      urlPlotIdProcessedRef.current = true;
       setAnyPlotSearchInput(urlPlotId);
       setAnyPlotSearchQuery(urlPlotId);
     }
-  }, [urlPlotId, anyPlotSearchQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Show error popup if search from URL returns no results (legacy - can be removed)
   useEffect(() => {
@@ -719,8 +722,8 @@ export default function RealtorDashboard() {
           </div>
           
           {/* Search Input */}
-          <div className="flex items-center gap-2">
-            <div className="relative">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+            <div className="relative flex-1 sm:flex-initial">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
@@ -732,33 +735,38 @@ export default function RealtorDashboard() {
                     setAnyPlotSearchQuery(anyPlotSearchInput.trim());
                   }
                 }}
-                className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-64 md:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg w-full sm:w-64 md:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (anyPlotSearchInput.trim()) {
-                  setAnyPlotSearchQuery(anyPlotSearchInput.trim());
-                }
-              }}
-              disabled={!anyPlotSearchInput.trim()}
-            >
-              Search
-            </Button>
-            {anyPlotSearchQuery && (
+            <div className="flex items-center gap-2">
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => {
-                  setAnyPlotSearchInput('');
-                  setAnyPlotSearchQuery('');
+                  if (anyPlotSearchInput.trim()) {
+                    setAnyPlotSearchQuery(anyPlotSearchInput.trim());
+                  }
                 }}
+                disabled={!anyPlotSearchInput.trim()}
+                className="flex-1 sm:flex-initial"
               >
-                Clear
+                Search
               </Button>
-            )}
+              {anyPlotSearchQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    // Clear the URL parameter
+                    router.replace('/realtor', { scroll: false });
+                    setAnyPlotSearchInput('');
+                    setAnyPlotSearchQuery('');
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -840,16 +848,16 @@ export default function RealtorDashboard() {
                 </div>
                 
                 {/* Actions */}
-                <div className="flex items-center gap-2 pt-2 border-t border-blue-200">
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-blue-200">
                   {editingPlotId === anyPlotData.plot.id ? (
                     <>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                         <input
                           type="number"
                           step="0.000001"
                           value={editValues.realLatitude}
                           onChange={(e) => setEditValues({ ...editValues, realLatitude: e.target.value })}
-                          className="w-28 px-2 py-1 border rounded text-xs"
+                          className="w-full sm:w-28 px-2 py-1.5 border rounded text-xs"
                           placeholder="Latitude"
                         />
                         <input
@@ -857,7 +865,7 @@ export default function RealtorDashboard() {
                           step="0.000001"
                           value={editValues.realLongitude}
                           onChange={(e) => setEditValues({ ...editValues, realLongitude: e.target.value })}
-                          className="w-28 px-2 py-1 border rounded text-xs"
+                          className="w-full sm:w-28 px-2 py-1.5 border rounded text-xs"
                           placeholder="Longitude"
                         />
                       </div>
@@ -968,7 +976,7 @@ export default function RealtorDashboard() {
                       }}
                       readOnly={false}
                       showArea={true}
-                      height="350px"
+                      height="280px"
                       cadastralInfo={{
                         reference: (anyPlotData.plot.enrichmentData as any)?.cadastral?.cadastral_reference,
                         label: (anyPlotData.plot.enrichmentData as any)?.cadastral?.label,
@@ -1055,17 +1063,17 @@ export default function RealtorDashboard() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                         <span className="text-xs text-green-600 font-medium">✓ Claimed</span>
                         {editingPlotId === plot.id ? (
                           <>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                               <input
                                 type="number"
                                 step="0.000001"
                                 value={editValues.realLatitude}
                                 onChange={(e) => setEditValues({ ...editValues, realLatitude: e.target.value })}
-                                className="w-24 px-2 py-1 border rounded text-xs"
+                                className="w-full sm:w-24 px-2 py-1.5 border rounded text-xs"
                                 placeholder="Latitude"
                               />
                               <input
@@ -1073,7 +1081,7 @@ export default function RealtorDashboard() {
                                 step="0.000001"
                                 value={editValues.realLongitude}
                                 onChange={(e) => setEditValues({ ...editValues, realLongitude: e.target.value })}
-                                className="w-24 px-2 py-1 border rounded text-xs"
+                                className="w-full sm:w-24 px-2 py-1.5 border rounded text-xs"
                                 placeholder="Longitude"
                               />
                             </div>
@@ -1176,7 +1184,7 @@ export default function RealtorDashboard() {
                           }}
                           readOnly={false}
                           showArea={true}
-                          height="350px"
+                          height="280px"
                           cadastralInfo={{
                             reference: (plot.enrichmentData as any)?.cadastral?.cadastral_reference,
                             label: (plot.enrichmentData as any)?.cadastral?.label,
