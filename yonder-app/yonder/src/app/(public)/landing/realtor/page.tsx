@@ -21,16 +21,30 @@ export default function ForRealtorsPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/">
-            <Image src="/yonder-logo.svg" alt="Yonder" width={95} height={22} />
+      <header className="sticky top-0 z-20 bg-background border-b border-gray-100 h-18 items-center">
+        <div className="mx-auto max-w-7xl px-8 py-4 flex items-center gap-4 justify-between">
+          <Link href="/" className="font-semibold">
+            <Image src="/logo.svg" alt="Yonder" width={100} height={100} />
           </Link>
-          <nav className="flex items-center gap-6">
-            <Link href="/for-realtors" className="text-sm font-medium text-primary">
+          <div className="ml-auto md:ml-6 flex items-center gap-4">
+            <Link
+              href="/landing/realtor"
+              className="text-sm font-medium text-foreground"
+            >
               For Realtors
             </Link>
-          </nav>
+            <Link
+              href="/login"
+              className="px-3 py-1.5 rounded-full font-semibold text-base h-10 hover:bg-accent"
+            >
+              Login
+            </Link>
+            <Link href="/signup">
+              <Button className="h-10 px-4 rounded-full font-semibold text-base">
+                Sign up
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -46,20 +60,22 @@ export default function ForRealtorsPage() {
                   Add the real location in private and unlock AI reports for your buyers. Use your Yonder link anywhere
                   — fewer questions, less back-and-forth, faster sale.
                 </p>
-                <Button
-                  size="lg"
-                  className="bg-[#ff6b54] hover:bg-[#ff5a42] text-white gap-2 rounded-full px-8 w-full md:w-auto"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Claim plot
-                </Button>
+                <Link href="/realtor">
+                  <Button
+                    size="lg"
+                    className="bg-[#ff6b54] hover:bg-[#ff5a42] text-white gap-2 rounded-full px-8 w-full md:w-auto"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Claim plot
+                  </Button>
+                </Link>
               </div>
 
               {/* Right side - Image with floating badges */}
               <div className="relative">
                 <div className="relative rounded-xl overflow-hidden">
                   <Image
-                    src="/spanish-building-land-plot-with-trees-sunny.jpg"
+                    src="/landscape/spanish-building-land-plot-with-trees-sunny.jpg"
                     alt="Land plot"
                     width={500}
                     height={320}
@@ -227,17 +243,53 @@ export default function ForRealtorsPage() {
           <p className="text-muted-foreground mb-8">
             It only takes a few minutes. Share your plot's location and let us handle the rest.
           </p>
-          <Button size="lg" className="gap-2 bg-[#ff6b54] hover:bg-[#ff5a42]">
-            Get Started <ArrowRight className="h-4 w-4" />
-          </Button>
+          <Link href="/realtor">
+            <Button size="lg" className="gap-2 bg-[#ff6b54] hover:bg-[#ff5a42]">
+              Get Started <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border py-8 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <Image src="/yonder-logo.svg" alt="Yonder" width={95} height={22} />
-          <p className="text-sm text-muted-foreground">© 2025 Yonder. Helping buyers find their perfect plot.</p>
+      <footer className="border-t">
+        <div className="mx-auto max-w-6xl px-4 py-10 grid gap-8 md:grid-cols-3 text-sm">
+          <div>
+            <div className="font-semibold">Yonder ©</div>
+            <ul className="mt-2 space-y-2 text-muted-foreground flex gap-4">
+              <li>
+                <a
+                  href="https://www.linkedin.com/company/liveyonder/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-foreground"
+                >
+                  LinkedIn
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://www.instagram.com/liveyonderco/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-foreground"
+                >
+                  Instagram
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div className="mx-auto max-w-6xl px-4 pb-8 text-xs text-muted-foreground flex items-center justify-between">
+          <span>© {new Date().getFullYear()} Yonder</span>
+          <div className="flex gap-4">
+            <a href="#" className="hover:text-foreground">
+              Terms
+            </a>
+            <a href="#" className="hover:text-foreground">
+              Privacy
+            </a>
+          </div>
         </div>
       </footer>
     </div>
