@@ -50,7 +50,7 @@ export function PublicHeader() {
               <DropdownMenuTrigger asChild>
                 <button
                   className={cn(
-                    "flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    "flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer",
                     "hover:bg-accent hover:text-accent-foreground",
                     isActiveSolution
                       ? "text-foreground"
@@ -163,7 +163,7 @@ export function PublicHeader() {
                   href={solution.href}
                   onClick={() => setMobileMenuOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-3 rounded-md transition-colors",
+                    "flex items-center gap-3 px-3 py-3 rounded-md transition-colors cursor-pointer",
                     "hover:bg-accent",
                     isActive ? "bg-accent" : ""
                   )}
@@ -185,14 +185,6 @@ export function PublicHeader() {
             >
               Pricing
             </span>
-
-            <Link
-              href="/login"
-              onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium hover:bg-accent transition-colors"
-            >
-              Login
-            </Link>
           </nav>
         </div>
       )}
