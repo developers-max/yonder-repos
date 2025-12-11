@@ -402,7 +402,7 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
         {/* Header - Mobile optimized */}
         <div className="px-3 md:px-6 py-3 md:py-4 border-b border-border">
           {/* Tab Navigation - Touch friendly */}
-          <div className="flex space-x-1 mb-3 md:mb-4 p-1 border rounded-full">
+          <div className="flex space-x-0.5 mb-2 md:mb-4 p-0.5 border rounded-full">
             <Button
               onClick={() => {
                 setActiveTab('browse');
@@ -416,7 +416,7 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
               className="flex-1 h-10 md:h-9"
             >
               <Search className="w-4 h-4 mr-1" />
-              <span className="hidden sm:inline">Browse </span>Plots
+              <span className="hidden sm:inline">Find </span>Land
             </Button>
             <Button
               onClick={() => setActiveTab('project')}
@@ -432,11 +432,9 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
           {/* Browse Tab Header */}
           {activeTab === 'browse' && (
             <>
-              <div className="flex items-center justify-between gap-1">
-                <div className="min-w-0">
-                  <h2 className="text-sm md:text-lg font-semibold text-foreground">Browse Plots</h2>
-                </div>
-                <div className="flex gap-1 md:gap-2">
+              <div className="flex">
+                {/* First column - matches Find Land button width */}
+                <div className="flex-1 flex items-center justify-between pr-1">
                   {/* View Toggle */}
                   <div className="flex border border-border rounded-full">
                     <Button
@@ -449,7 +447,7 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
                       }}
                       variant={viewMode === 'map' ? 'default' : 'ghost'}
                       size="sm"
-                      className="rounded-r-none h-7 md:h-9 px-2 md:px-3 text-xs md:text-sm"
+                      className="rounded-r-none h-8 md:h-9 px-2.5 md:px-3 text-xs md:text-sm"
                     >
                       <MapIcon className="w-3 h-3 md:w-4 md:h-4 md:mr-1" />
                       <span className="hidden md:inline">Map</span>
@@ -458,7 +456,7 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
                       onClick={() => setViewMode('list')}
                       variant={viewMode === 'list' ? 'default' : 'ghost'}
                       size="sm"
-                      className="rounded-l-none border-l-0 h-7 md:h-9 px-2 md:px-3 text-xs md:text-sm"
+                      className="rounded-l-none border-l-0 h-8 md:h-9 px-2.5 md:px-3 text-xs md:text-sm"
                     >
                       <List className="w-3 h-3 md:w-4 md:h-4 md:mr-1" />
                       <span className="hidden md:inline">List</span>
@@ -477,13 +475,15 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
                     }}
                     variant="outline"
                     size="sm"
-                    className="h-7 md:h-9 px-2 md:px-3 text-xs md:text-sm"
+                    className="h-8 md:h-9 px-2.5 md:px-3 text-xs md:text-sm"
                   >
                     <Filter className="w-3 h-3 md:w-4 md:h-4 md:mr-1" />
                     <span className="hidden sm:inline">Filters</span>
                     {filtersExpanded ? <ChevronUp className="w-3 h-3 md:w-4 md:h-4 ml-0.5 md:ml-1" /> : <ChevronDown className="w-3 h-3 md:w-4 md:h-4 ml-0.5 md:ml-1" />}
                   </Button>
                 </div>
+                {/* Second column - empty spacer to match Your Project button (hidden on mobile) */}
+                <div className="hidden md:block flex-1" />
               </div>
 
               {/* Active Filters Summary - Collapsible on mobile */}
