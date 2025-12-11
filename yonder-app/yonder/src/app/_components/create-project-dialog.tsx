@@ -24,6 +24,7 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
   const [creating, setCreating] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const createOrgStepsMutation = trpc.processSteps.createOrganizationSteps.useMutation();
+  const { data: organizations } = authClient.useListOrganizations();
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -41,6 +42,18 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
     if (!projectName.trim()) return;
     try {
       setCreating(true);
+
+      // Check if user already has a project with this name (case-insensitive)
+      const normalizedName = projectName.trim().toLowerCase();
+      const duplicate = organizations?.find(
+        (org) => org.name?.toLowerCase() === normalizedName
+      );
+      if (duplicate) {
+        setSubmitError('You already have a project with this name. Please choose a different name.');
+        setCreating(false);
+        return;
+      }
+
       const slug = projectName
         .toLowerCase()
         .replace(/\s+/g, '-')
