@@ -68,6 +68,17 @@ export default function ProjectMenuInline({ className, onOrganizationChange }: P
     if (!newProjectName.trim()) return;
     try {
       setCreating(true);
+
+      // Check if user already has a project with this name (case-insensitive)
+      const normalizedName = newProjectName.trim().toLowerCase();
+      const duplicate = organizations?.find(
+        (org) => org.name?.toLowerCase() === normalizedName && org.id !== editing?.id
+      );
+      if (duplicate) {
+        setSubmitError('You already have a project with this name. Please choose a different name.');
+        setCreating(false);
+        return;
+      }
       setSubmitError(null);
       const slug = newProjectName
         .toLowerCase()

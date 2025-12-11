@@ -71,19 +71,71 @@ const dataMap = await getExistingEnrichmentDataMap(['uuid1', 'uuid2']);
 
 ```
 src/
-├── schema/          # Drizzle schema definitions
-│   ├── plots.ts     # Plots and enriched_plots tables
-│   ├── municipalities.ts  # Municipalities and PDM tables
-│   └── realtors.ts  # Realtor table setup functions
-├── connection/      # Database connection utilities
-│   └── index.ts     # Pool and Drizzle instance management
-├── operations/      # Common database operations
-│   └── plots.ts     # CRUD operations for plots
-└── index.ts         # Main entry point
+├── schema/              # Drizzle schema definitions
+│   ├── plots.ts         # Plots and enriched_plots tables
+│   ├── municipalities.ts    # Municipalities and PDM tables
+│   └── realtors.ts      # Realtor table setup functions
+├── connection/          # Database connection utilities
+│   └── index.ts         # Pool and Drizzle instance management
+├── operations/          # Common database operations
+│   ├── plots.ts         # Plot CRUD operations
+│   ├── municipalities.ts    # Municipality lookup/upsert
+│   └── __tests__/       # Unit tests (vitest)
+└── index.ts             # Main entry point
 ```
+
+## Available Operations
+
+### Plot Operations
+```typescript
+import {
+  upsertEnrichedPlot,
+  upsertPlotMunicipality,
+  upsertEnrichedPlotWithMunicipality,
+  getExistingEnrichmentDataMap,
+  getPlotsByIds,
+  fetchPlotsBatch,
+  markPlotEnriched,
+} from '@yonder/persistence';
+```
+
+### Municipality Operations
+```typescript
+import {
+  findMunicipalityByName,
+  upsertMunicipality,
+  findPortugalMunicipalityByName,
+  findPortugalMunicipalityByCaopId,
+  findPortugalMunicipality,
+} from '@yonder/persistence';
+```
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `pnpm build` | Build the package (tsup) |
+| `pnpm dev` | Watch mode for development |
+| `pnpm test` | Run unit tests (vitest) |
+| `pnpm test:watch` | Run tests in watch mode |
+| `pnpm typecheck` | TypeScript type checking |
 
 ## Environment Variables
 
 - `DATABASE_URL` - PostgreSQL connection string (required)
 - `PLOTS_TABLE_ENV` - `'prod'` or `'stage'` (default: `'stage'`)
 - `REALTORS_DEFAULT_COUNTRY` - Default country for realtors (default: `'Portugal'`)
+
+## Development
+
+After making changes to this package:
+
+```bash
+# Rebuild the package
+pnpm --filter @yonder/persistence build
+
+# Run tests
+pnpm --filter @yonder/persistence test
+```
+
+**Important**: Consumers import from `dist/`, so always rebuild after schema or operation changes.

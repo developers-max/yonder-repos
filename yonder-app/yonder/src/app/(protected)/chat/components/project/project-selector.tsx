@@ -123,6 +123,18 @@ export default function ProjectSelector({ className, onOrganizationChange }: Pro
     try {
       setCreating(true);
       setSubmitError(null);
+
+      // Check if user already has a project with this name (case-insensitive)
+      const normalizedName = newProjectName.trim().toLowerCase();
+      const duplicate = organizations?.find(
+        (org) => org.name?.toLowerCase() === normalizedName && org.id !== editing?.id
+      );
+      if (duplicate) {
+        setSubmitError('You already have a project with this name. Please choose a different name.');
+        setCreating(false);
+        return;
+      }
+
       const slug = newProjectName
         .toLowerCase()
         .replace(/\s+/g, '-')

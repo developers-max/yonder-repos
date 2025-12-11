@@ -11,6 +11,18 @@ Plot enrichment service for the Yonder platform. Enriches real estate plots with
 
 This package is part of the [yonder-repos](../README.md) monorepo.
 
+**Database operations** are imported from `@yonder/persistence`:
+
+```typescript
+import { 
+  upsertEnrichedPlot, 
+  getExistingEnrichmentDataMap,
+  fetchPlotsBatch,
+} from '@yonder/persistence';
+
+import { getPgPool } from '@yonder/persistence/connection';
+```
+
 ## Setup
 
 ### Prerequisites

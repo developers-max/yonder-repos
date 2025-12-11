@@ -108,3 +108,84 @@ export async function getPlotsByIds(
     client.release();
   }
 }
+
+/**
+ * Fetch a batch of plots for enrichment processing
+ * @param offset - Pagination offset
+ * @param limit - Batch size
+ * @param options - Filter options (country, unenrichedOnly)
+ */
+export async function fetchPlotsBatch(
+  offset: number,
+  limit: number,
+  options: {
+    country?: string;
+    tableName?: string;
+  } = {}
+): Promise<Array<{ id: string; latitude: number; longitude: number }>> {
+  const { country, tableName = 'plots_stage' } = options;
+  const pool = getPgPool();
+  const client = await pool.connect();
+  
+  try {
+    let query = `SELECT id, latitude, longitude FROM ${tableName}`;
+    const params: (string | number)[] = [];
+    
+    if (country) {
+      params.push(country);
+      query += ` WHERE country = $${params.length}`;
+    }
+    
+    params.push(offset, limit);
+    query += ` ORDER BY id OFFSET $${params.length - 1} LIMIT $${params.length}`;
+    
+    const res = await client.query(query, params);
+    return res.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Mark a plot as enriched in the plots_stage table
+ */
+export async function markPlotEnriched(
+  plotId: string,
+  tableName: string = 'plots_stage'
+): Promise<void> {
+  const pool = getPgPool();
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `UPDATE ${tableName} SET enriched = true WHERE id = $1`,
+      [plotId]
+    );
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Upsert enriched plot with municipality ID
+ */
+export async function upsertEnrichedPlotWithMunicipality(
+  plot: PlotInput,
+  enrichmentData: object,
+  municipalityId: number | null,
+  tableName: string = 'enriched_plots_stage'
+): Promise<void> {
+  const pool = getPgPool();
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO ${tableName} (id, latitude, longitude, enrichment_data, municipality_id)
+       VALUES ($1, $2, $3, $4::jsonb, $5)
+       ON CONFLICT (id) DO UPDATE SET
+         enrichment_data = COALESCE(${tableName}.enrichment_data, '{}'::jsonb) || EXCLUDED.enrichment_data,
+         municipality_id = EXCLUDED.municipality_id`,
+      [plot.id, plot.latitude, plot.longitude, JSON.stringify(enrichmentData), municipalityId]
+    );
+  } finally {
+    client.release();
+  }
+}

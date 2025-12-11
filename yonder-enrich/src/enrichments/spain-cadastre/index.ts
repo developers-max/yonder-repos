@@ -1,6 +1,10 @@
 import dotenv from 'dotenv';
 import { getSpanishCadastralInfo } from './spain_cadastre_lookup';
-import { getPgPool, upsertEnrichedPlot, getExistingEnrichmentDataMap } from '../helpers/db-helpers';
+import { 
+  upsertEnrichedPlot, 
+  getExistingEnrichmentDataMap,
+  fetchPlotsBatch as fetchPlotsBatchShared,
+} from '@yonder/persistence';
 
 dotenv.config();
 
@@ -37,24 +41,10 @@ function assertEnv() {
   }
 }
 
-
+// Use shared fetchPlotsBatch with Spain country filter
 async function fetchPlotsBatch(offset: number, limit: number): Promise<Array<{ id: string; latitude: number; longitude: number }>> {
-  const pgPool = getPgPool();
-  const client = await pgPool.connect();
-  try {
-    // SPAIN ONLY - Cadastral information for Spanish plots
-    const res = await client.query(
-      `SELECT id, latitude, longitude 
-       FROM plots_stage 
-       WHERE country = 'ES'
-       ORDER BY id 
-       OFFSET $1 LIMIT $2`,
-      [offset, limit]
-    );
-    return res.rows;
-  } finally {
-    client.release();
-  }
+  // SPAIN ONLY - Cadastral information for Spanish plots
+  return fetchPlotsBatchShared(offset, limit, { country: 'ES' });
 }
 
 
@@ -117,7 +107,7 @@ export async function enrichSpanishCadastre() {
     const enrichmentMap = await getExistingEnrichmentDataMap(idList);
 
     const toProcess = plots.filter(p => {
-      const existing = enrichmentMap.get(p.id);
+      const existing = enrichmentMap.get(p.id) as { cadastral?: { cadastral_reference?: string | null } } | undefined;
       
       // Retry failed mode: only process plots with null/N/A cadastral references
       if (SPAIN_CADASTRE_RETRY_FAILED) {

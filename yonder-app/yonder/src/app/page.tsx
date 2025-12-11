@@ -11,6 +11,7 @@ import { Magnetic } from "@/app/_components/ui/magnetic";
 import { Send, Waves, Mountain, Sprout } from "lucide-react";
 import { cn } from "@/lib/utils/utils";
 import { Marquee } from "@/app/_components/ui/marquee";
+import { PublicHeader } from "@/app/_components/public-header";
 
 export default function Home() {
   const [search, setSearch] = useState("");
@@ -68,32 +69,7 @@ export default function Home() {
 
   return (
     <main>
-      <header className="sticky top-0 z-20 bg-background border-b border-gray-100 h-18 items-center">
-        <div className="mx-auto max-w-7xl px-8 py-4 flex items-center gap-4 justify-between">
-          <Link href="/" className="font-semibold">
-            <Image src="/logo.svg" alt="Yonder" width={100} height={100} />
-          </Link>
-          <div className="ml-auto md:ml-6 flex items-center gap-4">
-            <Link
-              href="/landing/realtor"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              For Realtors
-            </Link>
-            <Link
-              href="/login"
-              className="px-3 py-1.5 rounded-full font-semibold text-base h-10 hover:bg-accent"
-            >
-              Login
-            </Link>
-            <Link href="/signup">
-              <Button className="h-10 px-4 rounded-full font-semibold text-base">
-                Sign up
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      <PublicHeader />
 
       {/* Hero */}
       <section id="hero">

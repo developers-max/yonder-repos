@@ -2,7 +2,11 @@ import dotenv from 'dotenv';
 import { getPortugalCadastralInfo } from './portugal_cadastre_lookup';
 import { getBUPiPropertyInfo } from './bupi_lookup';
 import { getBUPiPropertyInfoArcGIS } from './bupi_arcgis_rest';
-import { getPgPool, upsertEnrichedPlot, getExistingEnrichmentDataMap } from '../helpers/db-helpers';
+import { 
+  upsertEnrichedPlot, 
+  getExistingEnrichmentDataMap,
+  fetchPlotsBatch as fetchPlotsBatchShared,
+} from '@yonder/persistence';
 
 dotenv.config();
 
@@ -42,24 +46,10 @@ function assertEnv() {
   }
 }
 
-
+// Use shared fetchPlotsBatch with Portugal country filter
 async function fetchPlotsBatch(offset: number, limit: number): Promise<Array<{ id: string; latitude: number; longitude: number }>> {
-  const pgPool = getPgPool();
-  const client = await pgPool.connect();
-  try {
-    // PORTUGAL ONLY - Cadastral information for Portuguese plots
-    const res = await client.query(
-      `SELECT id, latitude, longitude 
-       FROM plots_stage 
-       WHERE country = 'PT'
-       ORDER BY id 
-       OFFSET $1 LIMIT $2`,
-      [offset, limit]
-    );
-    return res.rows;
-  } finally {
-    client.release();
-  }
+  // PORTUGAL ONLY - Cadastral information for Portuguese plots
+  return fetchPlotsBatchShared(offset, limit, { country: 'PT' });
 }
 
 
@@ -129,7 +119,7 @@ export async function enrichPortugalCadastre() {
     const enrichmentMap = await getExistingEnrichmentDataMap(idList);
 
     const toProcess = plots.filter(p => {
-      const existing = enrichmentMap.get(p.id);
+      const existing = enrichmentMap.get(p.id) as { cadastral?: { cadastral_reference?: string | null } } | undefined;
       
       // Retry failed mode: only process plots with null/missing cadastral references
       if (PORTUGAL_CADASTRE_RETRY_FAILED) {

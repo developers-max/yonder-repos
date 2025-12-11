@@ -1,7 +1,11 @@
 import dotenv from 'dotenv';
 import { getCRUSZoningForPoint } from '../../api/helpers/crus-helpers';
 import { translateZoningLabel } from '../../llm/translate';
-import { getPgPool, upsertEnrichedPlot, getExistingEnrichmentDataMap } from '../helpers/db-helpers';
+import { 
+  upsertEnrichedPlot, 
+  getExistingEnrichmentDataMap,
+  fetchPlotsBatch as fetchPlotsBatchShared,
+} from '@yonder/persistence';
 
 dotenv.config();
 
@@ -35,27 +39,10 @@ function assertEnv() {
   }
 }
 
-// (Old direct OGC API helpers removed; we rely on crus_lookup.ts now.)
-
-
+// Use shared fetchPlotsBatch with Portugal country filter
 async function fetchPlotsBatch(offset: number, limit: number): Promise<Array<{ id: string; latitude: number; longitude: number }>> {
-  const pgPool = getPgPool();
-  const client = await pgPool.connect();
-  try {
-    // CRUS is Portugal-specific (DGT = Direção-Geral do Território)
-    // Only process plots in Portugal
-    const res = await client.query(
-      `SELECT id, latitude, longitude 
-       FROM plots_stage 
-       WHERE country = 'PT'
-       ORDER BY id 
-       OFFSET $1 LIMIT $2`,
-      [offset, limit]
-    );
-    return res.rows;
-  } finally {
-    client.release();
-  }
+  // CRUS is Portugal-specific (DGT = Direção-Geral do Território)
+  return fetchPlotsBatchShared(offset, limit, { country: 'PT' });
 }
 
 

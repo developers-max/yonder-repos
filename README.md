@@ -66,24 +66,46 @@ pnpm db:push
 
 ### @yonder/persistence
 
-Shared database layer containing:
+**Single source of truth for all database-related code.**
 
 - **Schema**: Drizzle ORM table definitions (plots, municipalities, realtors, etc.)
-- **Connection**: PostgreSQL pool management
-- **Operations**: Reusable database helpers
+- **Connection**: PostgreSQL pool management (`getDrizzle`, `getPgPool`)
+- **Operations**: Shared DB operations (`upsertEnrichedPlot`, `findMunicipalityByName`, etc.)
+- **Testing**: Unit tests with Vitest
 
 ```typescript
+// Schema
 import { enrichedPlots, municipalities } from '@yonder/persistence/schema';
+
+// Connection
 import { getDrizzle, getPgPool } from '@yonder/persistence/connection';
+
+// Operations
+import { upsertEnrichedPlot, findMunicipalityByName } from '@yonder/persistence';
 ```
+
+See [packages/yonder-persistence/README.md](./packages/yonder-persistence/README.md).
 
 ### yonder-app
 
-Next.js web application. See [yonder-app/yonder/README.md](./yonder-app/yonder/README.md).
+Next.js 16 web application with tRPC, Vercel AI SDK, and Mapbox GL.
+
+- **Framework**: Next.js 16 with App Router and Turbopack
+- **API**: tRPC v11 with React Query
+- **Auth**: better-auth with Google OAuth
+- **UI**: Tailwind CSS v4, Radix UI, shadcn/ui
+
+See [yonder-app/yonder/README.md](./yonder-app/yonder/README.md).
 
 ### yonder-enrich
 
-Plot enrichment service for amenities, zoning, and geocoding. See [yonder-enrich/README.md](./yonder-enrich/README.md).
+Backend ETL service for plot data enrichment.
+
+- **Enrichments**: Amenities (OSM), Municipalities, CRUS Zoning, Cadastre (PT/ES)
+- **API**: REST API for on-demand enrichment
+- **Testing**: Jest with supertest
+
+See [yonder-enrich/README.md](./yonder-enrich/README.md).
 
 ## Environment Variables
 
