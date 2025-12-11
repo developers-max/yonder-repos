@@ -1,0 +1,262 @@
+# Yonder Monorepo - LLM Guidelines
+
+## Monorepo Structure
+
+This is a pnpm workspace monorepo with the following packages:
+
+```
+yonder-repos/
+├── packages/
+│   └── yonder-persistence/    # Shared DB schema, types, connections, SQL operations
+├── yonder-app/yonder/         # Next.js frontend application
+└── yonder-enrich/             # Backend ETL and data enrichment service
+```
+
+Run `pnpm install` from the root. Use `pnpm --filter <package> <command>` to run scripts in specific packages.
+
+---
+
+## @yonder/persistence (packages/yonder-persistence)
+
+**This is the single source of truth for all database-related code.**
+
+### What belongs here:
+- All Drizzle ORM schema definitions (`src/schema/`)
+- Database connection utilities (`src/connection/`)
+- Shared SQL operations and queries (`src/operations/`)
+- Type definitions for database entities
+- Any new tables, columns, indexes, or migrations
+
+### Key patterns:
+```typescript
+// Import schema for Drizzle queries
+import { enrichedPlots, municipalities } from '@yonder/persistence/schema';
+
+// Import connection utilities
+import { getDrizzle, getPgPool } from '@yonder/persistence/connection';
+
+// Import common operations
+import { upsertEnrichedPlot } from '@yonder/persistence';
+```
+
+### Schema conventions:
+- Use `pgTable()` from `drizzle-orm/pg-core`
+- Define indexes in the table definition using the callback pattern
+- Export both the table and inferred types: `type Plot = typeof plots.$inferSelect`
+- Use `PLOTS_TABLE_ENV` env var to switch between `prod` and `stage` tables
+- PostGIS geometry columns use `geometry({ type: "point", srid: 4326 })`
+- JSONB columns use `.$type<T>()` for TypeScript inference
+
+### Connection patterns:
+- `getDrizzle()` - Type-safe ORM queries (preferred for yonder-app)
+- `getPgPool()` - Raw SQL via pg Pool (used in yonder-enrich for complex queries)
+- `withClient()` - Transaction helper for pool clients
+
+### When adding new tables:
+1. Create schema in `packages/yonder-persistence/src/schema/`
+2. Export from `packages/yonder-persistence/src/schema/index.ts`
+3. Re-export in consuming apps if needed (yonder-app re-exports in `src/lib/db/schema.ts`)
+4. Run `pnpm --filter @yonder/persistence build` to rebuild
+
+---
+
+## yonder-app (yonder-app/yonder)
+
+**Next.js 16 frontend with TypeScript, tRPC, and Vercel AI SDK.**
+
+### Tech stack:
+- **Framework**: Next.js 16 with App Router and Turbopack
+- **API Layer**: tRPC v11 with React Query
+- **AI**: Vercel AI SDK (`ai` package) with OpenAI
+- **Auth**: better-auth with organization support
+- **Database**: Drizzle ORM (via `@yonder/persistence`)
+- **UI**: Tailwind CSS v4, Radix UI, Lucide icons, shadcn/ui patterns
+- **Maps**: Mapbox GL with react-map-gl
+
+### Directory structure:
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── (protected)/        # Auth-required routes
+│   ├── (public)/           # Public routes
+│   ├── _components/        # Shared page components
+│   └── api/                # API routes
+├── lib/
+│   ├── ai/tools/           # Vercel AI SDK tool definitions
+│   ├── auth/               # better-auth configuration
+│   ├── db/                 # Drizzle client and app-specific schema
+│   └── utils/              # Utility functions
+├── server/trpc/            # tRPC routers and procedures
+└── trpc/                   # tRPC client configuration
+```
+
+### Key patterns:
+
+**tRPC routers** (`src/server/trpc/router/`):
+```typescript
+import { router, protectedProcedure } from '../trpc';
+import { z } from 'zod';
+
+export const myRouter = router({
+  myProcedure: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // ctx.session, ctx.user available
+    }),
+});
+```
+
+**Database access in app**:
+```typescript
+import { db } from '@/lib/db';
+import { enrichedPlots } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+
+const plot = await db.query.enrichedPlots.findFirst({
+  where: eq(enrichedPlots.id, plotId),
+});
+```
+
+**App-specific tables**: Define in `src/lib/db/schema.ts` but import shared tables from `@yonder/persistence`.
+
+### Environment:
+- `DATABASE_URL` - PostgreSQL connection string
+- `PLOTS_TABLE_ENV` - `prod` or `stage` (defaults to stage)
+- See `.env.example` for full list
+
+---
+
+## yonder-enrich
+
+**Backend ETL service for data enrichment operations.**
+
+### Tech stack:
+- **Runtime**: Node.js with ts-node
+- **Database**: Raw pg Pool + `@yonder/persistence` schemas
+- **APIs**: Express.js for internal API endpoints
+- **Testing**: Jest with supertest
+
+### Directory structure:
+```
+src/
+├── api/                    # Express API endpoints
+├── db/                     # Database setup scripts (pgvector, etc.)
+├── enrichments/            # Enrichment modules by type
+│   ├── amenities/          # OSM amenity enrichments
+│   ├── casafari/           # Casafari data integration
+│   ├── portugal-cadastre/  # Portugal cadastre data
+│   ├── spain-cadastre/     # Spain cadastre data
+│   └── ...
+├── etl/                    # ETL utilities (materialized views, etc.)
+├── layers/                 # GIS layer processing
+├── llm/                    # LLM-based enrichments
+└── index.ts                # CLI entry point with command routing
+```
+
+### Key patterns:
+
+**Database access**:
+```typescript
+import { getPgPool } from '@yonder/persistence/connection';
+
+const pool = getPgPool();
+const result = await pool.query('SELECT * FROM enriched_plots WHERE id = $1', [id]);
+```
+
+**Using shared schema types**:
+```typescript
+import { EnrichedPlot, Municipality } from '@yonder/persistence/schema';
+```
+
+**Enrichment module structure**:
+```
+enrichments/<name>/
+├── index.ts          # Main enrichment logic
+├── types.ts          # Module-specific types (optional)
+└── __tests__/        # Jest tests
+```
+
+**CLI commands**: Defined in `src/index.ts`, run via `pnpm --filter yonder-enrich <command>`.
+
+---
+
+## Shared Conventions
+
+### TypeScript:
+- Strict mode enabled
+- Use `zod` for runtime validation
+- Prefer explicit types over `any`
+
+### Database:
+- All schema changes go through `@yonder/persistence`
+- Use Drizzle ORM in yonder-app, raw SQL in yonder-enrich for complex queries
+- PostGIS for geospatial operations (SRID 4326)
+- JSONB for flexible enrichment data
+
+### Imports:
+```typescript
+// Shared schema
+import { enrichedPlots, municipalities } from '@yonder/persistence/schema';
+
+// Connection utilities
+import { getDrizzle, getPgPool } from '@yonder/persistence/connection';
+
+// Full package
+import { upsertEnrichedPlot, EnrichedPlot } from '@yonder/persistence';
+```
+
+### Testing:
+- yonder-app: Vitest
+- yonder-enrich: Jest
+- Run all: `pnpm test` from root
+
+### Building:
+```bash
+# Build all packages
+pnpm build
+
+# Build persistence first (required by consumers)
+pnpm --filter @yonder/persistence build
+
+# Build specific package
+pnpm --filter yonder build
+pnpm --filter yonder-enrich build
+```
+
+---
+
+## Important Notes
+
+1. **Never duplicate schema definitions** - Always use `@yonder/persistence`
+2. **Rebuild persistence after schema changes** - Consumers import from `dist/`
+3. **Stage vs Prod tables** - Controlled by `PLOTS_TABLE_ENV` environment variable
+4. **PostGIS required** - Database must have PostGIS extension enabled
+5. **pgvector for embeddings** - Used for PDM document embeddings in municipalities
+
+---
+
+## Documentation Maintenance
+
+**Keep all README files up to date with architectural changes.**
+
+### README locations:
+- [/README.md](cci:7://file:///Users/antonis/Documents/github/yonder-repos/README.md:0:0-0:0) - Root monorepo overview
+- [/packages/yonder-persistence/README.md](cci:7://file:///Users/antonis/Documents/github/yonder-repos/packages/yonder-persistence/README.md:0:0-0:0) - Persistence package docs
+- [/yonder-enrich/README.md](cci:7://file:///Users/antonis/Documents/github/yonder-repos/yonder-enrich/README.md:0:0-0:0) - Enrichment service docs
+- `/yonder-app/yonder/README.md` - Web app docs
+
+### When to update READMEs:
+- Adding new packages or modules
+- Changing build/run commands
+- Modifying directory structure
+- Adding new environment variables
+- Changing tech stack components
+- Adding new API endpoints or CLI commands
+- Adding or removing shared operations in `@yonder/persistence`
+
+### README content requirements:
+- **Overview**: What the package/app does
+- **Setup**: Prerequisites, installation, environment variables
+- **Usage**: How to build, run, and test
+- **Architecture**: Directory structure and key patterns
+- **Commands**: Available scripts with descriptions

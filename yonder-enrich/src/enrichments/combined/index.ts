@@ -4,6 +4,13 @@ import axios from 'axios';
 import { LocationInfo, Plot, EnrichmentData } from '../../types';
 import { isValidCoordinate, getDistance } from '../amenities/coordinates';
 import { queryOverpass, getFeatureType } from '../amenities/overpass';
+import { 
+  getPgPool,
+  findMunicipalityByName as findMunicipalityByNameShared,
+  upsertEnrichedPlotWithMunicipality,
+  markPlotEnriched,
+  type Municipality,
+} from '@yonder/persistence';
 
 dotenv.config();
 const DATABASE_URL = process.env.DATABASE_URL || '';
@@ -38,11 +45,6 @@ interface NominatimResponse {
   };
 }
 
-interface Municipality {
-  id: number;
-  name: string;
-  district?: string;
-}
 
 interface CombinedEnrichmentData {
   amenities: EnrichmentData;
