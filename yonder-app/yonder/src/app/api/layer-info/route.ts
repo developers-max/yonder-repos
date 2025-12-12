@@ -6,6 +6,10 @@ import {
   type GeoJSONPolygon,
 } from '@/lib/utils/remote-clients/yonder-enrich-client';
 
+// Vercel function configuration - extend timeout for slow external API calls
+// Fluid Compute enabled: up to 800s on Pro, we use 300s (5 min)
+export const maxDuration = 300;
+
 /**
  * API endpoint to query map layer information at a specific point, area, or polygon
  * Proxies requests to the yonder-enrich service which handles all geographic layer queries.

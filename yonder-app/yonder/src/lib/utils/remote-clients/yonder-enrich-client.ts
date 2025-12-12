@@ -9,8 +9,8 @@ import { getAuthHeaders } from './gcloud-auth';
 const ENRICH_API_URL = process.env.YONDER_ENRICH_API_URL || 'https://yonder-enrich-634586379515.us-central1.run.app';
 
 // Timeout configuration for API calls
-// Vercel Hobby has 10s timeout, Pro has 60s - keep under limit
-const ENRICH_TIMEOUT_MS = 55000; // 55 seconds (under Vercel Pro 60s limit)
+// Fluid Compute enabled: up to 800s on Pro, we use 300s (5 min)
+const ENRICH_TIMEOUT_MS = 300000; // 5 minutes
 
 export interface MunicipalityInfo {
   id?: number;
