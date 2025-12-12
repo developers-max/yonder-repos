@@ -102,6 +102,33 @@ Use this tool when users ask about:
 - "What municipality is this in?"
 - "Is there REN/RAN on this plot?"
 
+**IMPORTANT - Interpreting Results:**
+Each layer returns detailed attributes that require careful interpretation:
+
+**Zoning & Restrictions (critical for buildability):**
+- **REN**: Check \`type\` (TIPOLOGIA). "Exclusões" = REMOVED from REN (buildable). Other values like "Áreas de Elevado Risco de Erosão Hídrica", "Zonas Adjacentes a Cursos de Água" = active restrictions (not buildable).
+- **RAN**: Check \`category\` (SERVIDÃO). "Reserva Agrícola Nacional" = active agricultural restriction. \`subcategory\` (DINÂMICA) shows status: "Revisão" = updated, "Exclusão" = removed.
+- **CRUS**: \`type\` = zoning class. Solo Urbano/Urbanizável = buildable. Solo Rural/Rústico = limited building. Espaço Agrícola/Florestal/Natural = restricted.
+
+**Administrative (jurisdiction & location):**
+- **Municipality**: Official name for Câmara Municipal jurisdiction, PDM lookup, property taxes (IMI).
+- **Parish (Freguesia)**: Smallest administrative unit, local services.
+- **District**: Regional administration.
+- **NUTS III**: EU statistical region for development programs.
+
+**Land Classification (physical reality):**
+- **COS**: Current physical land cover from satellite (2018). Shows what IS on the land (forest, agriculture, urban). Compare with CRUS to see if reality matches zoning.
+- **Corine Land Cover (CLC)**: European standardized classification. Useful for cross-border comparisons.
+- **Built-up Areas**: Indicates developed/urbanized zones.
+
+**Property & Physical:**
+- **Cadastre**: Official parcel reference. Compare boundaries with what's being sold. Check if multiple parcels.
+- **Elevation**: Altitude in meters. Consider for access, views, construction costs.
+
+**Buildability Assessment:**
+Always cross-reference: REN (ecological) + RAN (agricultural) + CRUS (zoning) = complete picture.
+Read full \`attributes\` object for legal references, dates, official designations.
+
 **Input options** (in priority order):
 1. Plot from chat context (automatic if viewing a plot)
 2. Explicit plotId parameter
@@ -354,7 +381,7 @@ Use this tool when users ask about:
         elevation: findLayer('elevation'),
         landUse: findLayer('pt-cos'),
         corineLandCover: findLayer('pt-clc'),
-        builtUpAreas: findLayer('pt-builtup'),
+        builtUpAreas: findLayer('pt-built-up'),
       };
 
       const layersFound = data.layers.filter(l => l.found).length;

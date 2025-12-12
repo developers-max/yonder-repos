@@ -259,19 +259,33 @@ app.get('/api/enrich/info', (req: Request, res: Response) => {
       }
     },
     available_enrichments: {
-      global: ['amenities', 'municipalities'],
-      portugal: ['crus-zoning', 'portugal-cadastre'],
-      spain: ['spain-zoning', 'spain-cadastre'],
-      germany: ['germany-zoning']
+      global: ['amenities', 'elevation'],
+      portugal: ['administrative', 'cadastre', 'crus-zoning', 'ren', 'ran', 'land-use'],
+      spain: ['cadastre']
+    },
+    layers: {
+      portugal: {
+        administrative: ['pt-distrito', 'pt-municipio', 'pt-freguesia', 'pt-nuts3'],
+        cadastre: ['pt-cadastro'],
+        zoning: ['pt-crus', 'pt-ren', 'pt-ran'],
+        landUse: ['pt-cos', 'pt-clc', 'pt-built-up'],
+        elevation: ['elevation']
+      },
+      spain: {
+        cadastre: ['es-cadastro'],
+        elevation: ['elevation']
+      }
     },
     data_sources: {
       amenities: 'OpenStreetMap Overpass API',
-      municipalities: 'Nominatim (OpenStreetMap)',
-      'crus-zoning': 'Portugal DGT OGC API',
-      'portugal-cadastre': 'Portugal Cadastral Services',
-      'spain-zoning': 'Regional WFS Services (Autonomous Communities)',
-      'spain-cadastre': 'Spanish Dirección General del Catastro',
-      'germany-zoning': 'State/Länder WFS Services'
+      administrative: 'DGT OGC API (distritos, municipios, freguesias, nuts3)',
+      'pt-cadastro': 'DGT OGC API (cadastro collection)',
+      'crus-zoning': 'DGT OGC API (crus_<municipio> collections)',
+      'ren': 'Municipal ArcGIS REST / DGT SRUP WFS (gmgml:REN_Nacional)',
+      'ran': 'Municipal ArcGIS REST / DGT SRUP WFS (gmgml:RAN)',
+      'land-use': 'DGT WMS (COS2018, CLC2012, areas_edificadas)',
+      elevation: 'Open-Elevation API',
+      'es-cadastro': 'Spanish Dirección General del Catastro'
     }
   });
 });

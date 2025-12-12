@@ -65,6 +65,7 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
   const [activeTab, setActiveTab] = useState<'browse' | 'project'>('browse');
   const [resizeKey, setResizeKey] = useState(0);
   const [shouldZoomToLocation, setShouldZoomToLocation] = useState(false);
+  const [droppedPin, setDroppedPin] = useState<{ latitude: number; longitude: number; label?: string } | null>(null);
 
   // Listen for filter application events from chat
   useEffect(() => {
@@ -157,11 +158,49 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
       }
     };
 
+    const handleNavigateToMapLocation = (event: Event) => {
+      const { detail } = event as CustomEvent<{ latitude: number; longitude: number; zoom?: number; label?: string }>;
+      if (!detail?.latitude || !detail?.longitude) return;
+
+      // Switch to browse tab and map view
+      setActiveTab('browse');
+      setViewMode('map');
+
+      // Update filters with the new location
+      const updatedFilters = {
+        ...filters,
+        latitude: detail.latitude,
+        longitude: detail.longitude,
+        page: 1,
+      };
+      setFilters(updatedFilters);
+      setAppliedFilters(updatedFilters);
+
+      // Drop a pin at the navigated location
+      setDroppedPin({
+        latitude: detail.latitude,
+        longitude: detail.longitude,
+        label: detail.label,
+      });
+
+      // Trigger zoom to location
+      setShouldZoomToLocation(true);
+      setTimeout(() => {
+        setShouldZoomToLocation(false);
+      }, 2000);
+
+      // Trigger map resize
+      setTimeout(() => {
+        setResizeKey(prev => prev + 1);
+      }, 100);
+    };
+
     window.addEventListener('applyPlotFilters', handleApplyFilters as EventListener);
     window.addEventListener('switchToProjectTab', handleSwitchToProject as EventListener);
     window.addEventListener('switchToBrowseTab', handleSwitchToBrowse as EventListener);
     window.addEventListener('refreshProjectData', handleRefreshProjectData as EventListener);
     window.addEventListener('contactRealtorRequested', handleContactRealtorRequested as EventListener);
+    window.addEventListener('navigateToMapLocation', handleNavigateToMapLocation as EventListener);
 
     return () => {
       window.removeEventListener('applyPlotFilters', handleApplyFilters as EventListener);
@@ -169,8 +208,9 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
       window.removeEventListener('switchToBrowseTab', handleSwitchToBrowse as EventListener);
       window.removeEventListener('refreshProjectData', handleRefreshProjectData as EventListener);
       window.removeEventListener('contactRealtorRequested', handleContactRealtorRequested as EventListener);
+      window.removeEventListener('navigateToMapLocation', handleNavigateToMapLocation as EventListener);
     };
-  }, [router, filters.latitude, filters.longitude]);
+  }, [router, filters]);
 
   // Handle map bounds change to sync with filters (optional - uncomment to enable)
   const handleMapBoundsChange = useCallback((center: { latitude: number; longitude: number }, radiusKm: number) => {
@@ -758,6 +798,9 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
                 resizeKey={resizeKey}
                 shouldZoomToLocation={shouldZoomToLocation}
                 onZoomComplete={handleZoomComplete}
+                droppedPin={droppedPin}
+                showCadastreLayer={true}
+                country="PT"
               />
             </div>
 

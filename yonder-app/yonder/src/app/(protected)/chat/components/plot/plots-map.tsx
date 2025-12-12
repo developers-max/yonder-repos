@@ -13,11 +13,13 @@ import Supercluster from 'supercluster';
 // Mapbox CSS
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Button } from '@/app/_components/ui/button';
-import { PT_WMS_LAYERS, ES_WMS_LAYERS, type WMSLayerConfig, DEFAULT_ENABLED_LAYERS } from '@/app/_components/map/wms-layers-config';
+import { PT_WMS_LAYERS, ES_WMS_LAYERS, type WMSLayerConfig, DEFAULT_ENABLED_LAYERS, PLOTS_LAYER_CONFIG } from '@/app/_components/map/wms-layers-config';
 
-// Get WMS layers for a country
+// Get WMS layers for a country (includes plots layer)
 function getWMSLayers(country: 'PT' | 'ES'): Record<string, WMSLayerConfig> {
-  return country === 'PT' ? PT_WMS_LAYERS : ES_WMS_LAYERS;
+  const baseLayers = country === 'PT' ? PT_WMS_LAYERS : ES_WMS_LAYERS;
+  // Add plots layer at the beginning
+  return { plots: { ...PLOTS_LAYER_CONFIG, country }, ...baseLayers };
 }
 
 interface PlotsMapProps {
@@ -47,6 +49,7 @@ interface PlotsMapProps {
     };
   }; // Cadastre data for parcel boundary
   country?: 'ES' | 'PT'; // Country code for cadastre layer
+  droppedPin?: { latitude: number; longitude: number; label?: string } | null; // Pin dropped from chat navigation
 }
 
 interface MapBounds {
@@ -75,7 +78,7 @@ interface JitteredPlot {
   organizationPlotStatus?: string | null;
 }
 
-export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeKey, shouldZoomToLocation, onZoomComplete, singlePlotMode = false, singlePlot, showCadastreLayer = false, cadastreData, country = 'PT' }: PlotsMapProps) {
+export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeKey, shouldZoomToLocation, onZoomComplete, singlePlotMode = false, singlePlot, showCadastreLayer = false, cadastreData, country = 'PT', droppedPin }: PlotsMapProps) {
   const mapRef = useRef<MapRef>(null);
   
   // Initialize view state based on mode
@@ -101,9 +104,41 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
   const [showLayerMenu, setShowLayerMenu] = useState(false);
   const [showLegend, setShowLegend] = useState<string | null>(null); // Layer ID whose legend is shown
   const [legendModal, setLegendModal] = useState<{ layerId: string; config: WMSLayerConfig } | null>(null); // Full-screen legend modal
+  const [currentMunicipality, setCurrentMunicipality] = useState<string | null>(null); // For dynamic CRUS layer
+  const [crusGeoJson, setCrusGeoJson] = useState<GeoJSON.FeatureCollection | null>(null); // CRUS GeoJSON data
   
   // Get available WMS layers for the country
   const availableLayers = useMemo(() => getWMSLayers(country), [country]);
+  
+  // Track if plots have finished initial load (for layer loading priority)
+  const [plotsLoaded, setPlotsLoaded] = useState(false);
+  
+  // Fetch municipality for current map center (for CRUS layer)
+  // PRIORITY: Only fetch after plots are loaded to avoid blocking main content
+  useEffect(() => {
+    if (!showCadastreLayer || country !== 'PT') return;
+    if (!plotsLoaded && !singlePlotMode) return; // Wait for plots to load first
+    
+    const fetchMunicipality = async () => {
+      try {
+        const response = await fetch(
+          `/api/municipality-lookup?lat=${viewState.latitude}&lng=${viewState.longitude}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.normalized && data.normalized !== currentMunicipality) {
+            setCurrentMunicipality(data.normalized);
+          }
+        }
+      } catch (error) {
+        console.error('Municipality lookup failed:', error);
+      }
+    };
+    
+    // Debounce the fetch - longer delay for layer data (lower priority)
+    const timer = setTimeout(fetchMunicipality, 800);
+    return () => clearTimeout(timer);
+  }, [viewState.latitude, viewState.longitude, showCadastreLayer, country, currentMunicipality, plotsLoaded, singlePlotMode]);
   
   // State for enabled layers - initialize with defaults when cadastre layer is shown
   const [enabledLayers, setEnabledLayers] = useState<Set<string>>(() => {
@@ -112,6 +147,43 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
     }
     return new Set();
   });
+  
+  // Fetch CRUS GeoJSON when municipality changes and CRUS layer is enabled
+  // PRIORITY: Only fetch after plots are loaded
+  useEffect(() => {
+    if (!showCadastreLayer || !currentMunicipality || !enabledLayers.has('crus')) {
+      setCrusGeoJson(null);
+      return;
+    }
+    if (!plotsLoaded && !singlePlotMode) return; // Wait for plots first
+    
+    const fetchCrusData = async () => {
+      try {
+        // Calculate bbox from current view
+        const map = mapRef.current?.getMap();
+        if (!map) return;
+        
+        const mapBounds = map.getBounds();
+        if (!mapBounds) return;
+        
+        const bbox = `${mapBounds.getWest()},${mapBounds.getSouth()},${mapBounds.getEast()},${mapBounds.getNorth()}`;
+        
+        const response = await fetch(
+          `/api/crus-tiles?municipality=${currentMunicipality}&bbox=${bbox}&limit=500`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setCrusGeoJson(data);
+        }
+      } catch (error) {
+        console.error('CRUS data fetch failed:', error);
+      }
+    };
+    
+    // Debounce the fetch - delay for lower priority layer data
+    const timer = setTimeout(fetchCrusData, 500);
+    return () => clearTimeout(timer);
+  }, [currentMunicipality, showCadastreLayer, enabledLayers, viewState.zoom, plotsLoaded, singlePlotMode]);
   
   // Toggle a layer on/off
   const toggleLayer = useCallback((layerId: string) => {
@@ -188,6 +260,13 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
     mapFilters as PlotFilters,
     { enabled: !!mapFilters && !singlePlotMode }
   );
+
+  // Track when plots finish loading (for layer loading priority)
+  useEffect(() => {
+    if (!isLoading && plotsData) {
+      setPlotsLoaded(true);
+    }
+  }, [isLoading, plotsData]);
 
   // Function to add small offset to overlapping coordinates
   const addJitterToOverlappingCoordinates = useCallback((plots: JitteredPlot[]): JitteredPlot[] => {
@@ -517,7 +596,8 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/light-v11"
       >
-        {clusters.map((cluster) => {
+        {/* Plot markers - only shown when 'plots' layer is enabled */}
+        {enabledLayers.has('plots') && clusters.map((cluster) => {
           const [longitude, latitude] = cluster.geometry.coordinates;
           const { cluster: isCluster, point_count } = cluster.properties;
 
@@ -549,8 +629,9 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
               key={plot.id}
               longitude={longitude}
               latitude={latitude}
+              anchor="bottom"
             >
-              <div className="plot-marker relative">
+              <div className="plot-marker flex flex-col items-center">
                 <div 
                   className={`bg-white rounded-lg shadow-lg border border-gray-200 px-2 py-1 transition-shadow ${
                     singlePlotMode ? '' : 'cursor-pointer hover:shadow-xl'
@@ -565,11 +646,8 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
                     €{plot.price.toLocaleString()}
                   </span>
                 </div>
-                
-                {/* Pin pointer for single plot mode */}
-                {singlePlotMode && (
-                  <div className="absolute left-1/2 -bottom-1.5 w-0 h-0 border-l-6 border-r-6 border-t-6 border-l-transparent border-r-transparent border-t-white -translate-x-1/2 drop-shadow-md" />
-                )}
+                {/* Pin pointer showing exact location */}
+                <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-white -mt-[1px] drop-shadow-sm" />
                 
                 {/* Indicator for multiple plots at same location (not shown in single plot mode) */}
                 {!singlePlotMode && plot.isJittered && plot.plotsAtLocation && plot.plotsAtLocation > 1 && (
@@ -598,9 +676,69 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
           </Marker>
         )}
 
+        {/* Dropped Pin from Chat Navigation */}
+        {droppedPin && (
+          <Marker
+            longitude={droppedPin.longitude}
+            latitude={droppedPin.latitude}
+            anchor="bottom"
+          >
+            <div className="relative animate-in fade-in-0 zoom-in-50 duration-300">
+              <div className="flex flex-col items-center">
+                {/* Pin label */}
+                {droppedPin.label && (
+                  <div className="bg-purple-600 text-white rounded-lg shadow-lg px-3 py-1.5 text-xs font-semibold mb-1 whitespace-nowrap">
+                    {droppedPin.label}
+                  </div>
+                )}
+                {/* Pin icon */}
+                <div className="w-8 h-8 bg-purple-600 rounded-full border-3 border-white shadow-xl flex items-center justify-center">
+                  <div className="w-3 h-3 bg-white rounded-full" />
+                </div>
+                {/* Pin pointer */}
+                <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[12px] border-l-transparent border-r-transparent border-t-purple-600 -mt-1 drop-shadow-md" />
+              </div>
+            </div>
+          </Marker>
+        )}
+
+        {/* CRUS GeoJSON Layer - rendered separately as it uses dynamic GeoJSON */}
+        {showCadastreLayer && enabledLayers.has('crus') && crusGeoJson && crusGeoJson.features?.length > 0 && (
+          <Source
+            key={`crus-geojson-${currentMunicipality}`}
+            id="crus-geojson"
+            type="geojson"
+            data={crusGeoJson}
+          >
+            <Layer
+              id="crus-fill"
+              type="fill"
+              paint={{
+                'fill-color': ['get', '_color'],
+                'fill-opacity': 0.4
+              }}
+            />
+            <Layer
+              id="crus-outline"
+              type="line"
+              paint={{
+                'line-color': ['get', '_color'],
+                'line-width': 1.5,
+                'line-opacity': 0.8
+              }}
+            />
+          </Source>
+        )}
+
         {/* WMS/Vector Tile Layers - dynamically render enabled layers */}
-        {showCadastreLayer && singlePlot && Object.entries(availableLayers).map(([layerId, config]) => {
+        {showCadastreLayer && Object.entries(availableLayers).map(([layerId, config]) => {
           if (!enabledLayers.has(layerId)) return null;
+          
+          // Skip plots - handled separately as markers above
+          if (layerId === 'plots') return null;
+          
+          // Skip CRUS - it's handled separately as GeoJSON above
+          if (layerId === 'crus') return null;
           
           // Handle vector tile layers (e.g., Portuguese cadastre)
           if (config.type === 'vector') {
@@ -832,8 +970,8 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
         </div>
       )}
 
-      {/* Layer Toggle Menu - only show in single plot mode with cadastre layers */}
-      {showCadastreLayer && singlePlot && Object.keys(availableLayers).length > 0 && (
+      {/* Layer Toggle Menu - show when cadastre layers are enabled */}
+      {showCadastreLayer && Object.keys(availableLayers).length > 0 && (
         <div className="absolute bottom-2 right-2 z-10">
           <div className="relative">
             <button
