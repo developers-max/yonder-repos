@@ -9,18 +9,23 @@ import {
  * Parse a single DMS (Degrees, Minutes, Seconds) coordinate component to decimal degrees.
  * Supports formats like: 41°11'55.0"N, 41° 11' 55.0" N, 41d11m55.0sN, etc.
  */
-function parseDMSComponent(dmsStr: string): { decimal: number; isNegative: boolean } | null {
-  // Normalize the string
+export function parseDMSComponent(dmsStr: string): { decimal: number; isNegative: boolean } | null {
+  // Normalize the string - handle various Unicode quote characters
+  // Using explicit Unicode escapes for reliability
   const normalized = dmsStr
     .trim()
-    .replace(/[″"''`]/g, '"')  // Normalize quotes
-    .replace(/[′']/g, "'")     // Normalize prime
-    .replace(/[°º]/g, '°')     // Normalize degree symbol
-    .replace(/\s+/g, ' ');     // Normalize whitespace
+    // Double quotes: U+2033 (″), U+201C ("), U+201D ("), U+201E („), U+201F (‟), U+0022 (")
+    .replace(/[\u2033\u201C\u201D\u201E\u201F\u0022]/g, '"')
+    // Single quotes: U+2032 (′), U+2018 ('), U+2019 ('), U+201A (‚), U+201B (‛), U+0027 ('), U+0060 (`)
+    .replace(/[\u2032\u2018\u2019\u201A\u201B\u0027\u0060]/g, "'")
+    // Degree symbols: U+00B0 (°), U+00BA (º)
+    .replace(/[\u00B0\u00BA]/g, '\u00B0')
+    .replace(/\s+/g, ' ');
 
   // Match DMS pattern: degrees°minutes'seconds"[direction]
-  // Supports various formats: 41°11'55.0"N, 41 11 55.0 N, 41d11m55.0s N
-  const dmsPattern = /^(-?)(\d+(?:\.\d+)?)[°d\s]+(\d+(?:\.\d+)?)?['m\s]*(\d+(?:\.\d+)?)?["s\s]*([NSEW]?)$/i;
+  // Supports various formats: 41°11'55.0"N, 41 11 55.0 N, 41d11m55.0sN
+  // Note: seconds delimiter is (?:"|s)? - matches " or s, then direction is captured separately
+  const dmsPattern = /^(-?)(\d+(?:\.\d+)?)[°d\s]+(\d+(?:\.\d+)?)?['m\s]*(\d+(?:\.\d+)?)?(?:"|s)?\s*([NSEW]?)$/i;
   
   const match = normalized.match(dmsPattern);
   if (!match) return null;
@@ -54,7 +59,7 @@ function parseDMSComponent(dmsStr: string): { decimal: number; isNegative: boole
  * - "41 11 55.0 N 8 40 06.6 W"
  * - "N 41°11'55.0" W 8°40'06.6""
  */
-function parseCoordinateString(coordStr: string): { latitude: number; longitude: number } | null {
+export function parseCoordinateString(coordStr: string): { latitude: number; longitude: number } | null {
   if (!coordStr) return null;
 
   // First, try to detect if it's a simple decimal format "lat, lng" or "lat lng"
@@ -71,9 +76,12 @@ function parseCoordinateString(coordStr: string): { latitude: number; longitude:
   // Try to split into two components for DMS parsing
   // Look for patterns that separate lat and lng
   const normalized = coordStr
-    .replace(/[″"''`]/g, '"')
-    .replace(/[′']/g, "'")
-    .replace(/[°º]/g, '°');
+    // Double quotes: U+2033 (″), U+201C ("), U+201D ("), U+201E („), U+201F (‟), U+0022 (")
+    .replace(/[\u2033\u201C\u201D\u201E\u201F\u0022]/g, '"')
+    // Single quotes: U+2032 (′), U+2018 ('), U+2019 ('), U+201A (‚), U+201B (‛), U+0027 ('), U+0060 (`)
+    .replace(/[\u2032\u2018\u2019\u201A\u201B\u0027\u0060]/g, "'")
+    // Degree symbols: U+00B0 (°), U+00BA (º)
+    .replace(/[\u00B0\u00BA]/g, '\u00B0');
 
   // Try to split by comma, or by direction letter boundaries
   let parts: string[] = [];
