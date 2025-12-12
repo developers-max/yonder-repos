@@ -12,6 +12,7 @@ import { getProjectContextTool } from '../../../lib/ai/tools/get-project-context
 import { generateReportTool } from '../../../lib/ai/tools/generate-report';
 import { askMunicipalPlanningTool } from '../../../lib/ai/tools/ask-municipal-planning';
 import { getLayerInfoTool } from '../../../lib/ai/tools/get-layer-info';
+import { navigateToLocationTool } from '../../../lib/ai/tools/navigate-to-location';
 import { setToolContext, type PlotContextData, type GeoJSONPolygon } from '../../../lib/ai/tools/tool-context';
 import { auth } from '@/lib/auth/auth';
 import { headers } from 'next/headers';
@@ -187,6 +188,8 @@ ${isAdmin ? `10. **generateReport**: Use when users want to generate a comprehen
 
 ${isAdmin ? `12.` : `11.`} **getLayerInfo**: Use when users ask about geographic or regulatory layer data for a plot or location. Examples: "What zone is this plot in?", "Is this land protected?", "Is there REN/RAN on this plot?", "What's the land use classification?", "Show cadastral information", "What municipality is this in?". Returns data from cadastre, REN (ecological reserve), RAN (agricultural reserve), municipality, parish, district, NUTS III, land use (COS), Corine Land Cover, built-up areas, and elevation. Automatically uses plot context when available (coordinates and polygon geometry), or accepts explicit coordinates.
 
+${isAdmin ? `13.` : `12.`} **navigateToLocation**: Use when users provide specific coordinates and want to navigate the map to that location. Examples: "Go to 41.7400, -8.8080", "Show me coordinates 38.7223, -9.1393", "Navigate to latitude 41.1579, longitude -8.6291". This moves the map view to the specified coordinates.
+
 TOOL RESPONSE STRUCTURE: All tools return a standardized structure:
 - **filters**: The search criteria that will be applied
 - **summary**: A human-readable description of the filters
@@ -236,7 +239,8 @@ PLOT CONTEXT AVAILABLE: The user is currently viewing a specific plot (ID: ${plo
         // generateReport is admin-only
         ...(isAdmin ? { generateReport: generateReportTool } : {}),
         askMunicipalPlanning: askMunicipalPlanningTool,
-        getLayerInfo: getLayerInfoTool
+        getLayerInfo: getLayerInfoTool,
+        navigateToLocation: navigateToLocationTool
       },
       async onFinish({ response }) {
         // Only save messages if chatId is provided

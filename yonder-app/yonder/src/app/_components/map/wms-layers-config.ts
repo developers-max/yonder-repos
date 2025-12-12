@@ -20,7 +20,7 @@ export interface WMSLayerConfig {
   country: 'PT' | 'ES';
   legendUrl?: string; // WMS GetLegendGraphic URL
   unreliable?: boolean; // Mark layers that may timeout or be slow
-  type?: 'raster' | 'vector'; // Layer type (default: raster for WMS)
+  type?: 'raster' | 'vector' | 'geojson'; // Layer type (default: raster for WMS)
   sourceLayer?: string; // For vector tiles: the layer name within the tile
 }
 
@@ -28,22 +28,47 @@ export interface WMSLayerConfig {
 // Note: Only geo2.dgterritorio.gov.pt layers work because they support EPSG:3857 (Web Mercator)
 // The SNIT services at servicos.dgterritorio.pt only support EPSG:3763 (PT-TM06) which Mapbox can't use
 export const PT_WMS_LAYERS: Record<string, WMSLayerConfig> = {
-  // Cadastro Predial - Property boundaries (NEW! Vector tiles from OGC API)
+  // Cadastro Predial - Property boundaries (WMS from SNIC GeoServer)
+  // Note: OGC API vector tiles at ogcapi.dgterritorio.gov.pt return empty - using WMS instead
   cadastro: {
     id: 'cadastro',
     name: 'Cadastro Predial',
     shortName: 'Cadastre',
-    description: 'Property boundaries from the Portuguese Land Registry (DGT)',
-    url: 'https://ogcapi.dgterritorio.gov.pt/collections/cadastro/tiles/WebMercatorQuad/{z}/{y}/{x}?f=pbf',
-    layers: 'cadastro',
+    description: 'Property boundaries (DGT)',
+    url: 'https://snicws.dgterritorio.gov.pt/geoserver/inspire/ows?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=cadastralparcel&STYLES=&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    layers: 'cadastralparcel',
     opacity: 0.7,
-    color: '#dc2626', // Red
+    color: '#1a1a1a', // Black (matches WMS default style)
     provider: 'DGT',
     country: 'PT',
-    type: 'vector',
-    sourceLayer: 'mv_cadastralparcel_4326', // Layer name in the vector tile
-    // SVG legend for vector tile layer (no server legend available)
-    legendUrl: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="30"><rect x="5" y="5" width="20" height="20" fill="#dc2626" fill-opacity="0.3" stroke="#dc2626" stroke-width="2"/><text x="32" y="20" font-family="Arial" font-size="12" fill="#333">Parcela Cadastral</text></svg>'),
+    // SVG legend for cadastre layer (black to match WMS style)
+    legendUrl: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="30"><rect x="5" y="5" width="20" height="20" fill="none" stroke="#1a1a1a" stroke-width="2"/><text x="32" y="20" font-family="Arial" font-size="12" fill="#333">Parcela Cadastral</text></svg>'),
+  },
+
+  // CRUS - Carta do Regime de Uso do Solo (Municipal Zoning - PDM)
+  // Dynamic layer that shows zoning data for the current municipality via GeoJSON API
+  crus: {
+    id: 'crus',
+    name: 'CRUS (Zonamento PDM)',
+    shortName: 'CRUS',
+    description: 'Zonamento municipal (PDM)',
+    url: '/api/crus-tiles', // GeoJSON API endpoint
+    layers: 'crus',
+    opacity: 0.6,
+    color: '#8b5cf6', // Purple
+    provider: 'DGT',
+    country: 'PT',
+    type: 'geojson', // Uses GeoJSON, not vector tiles
+    // SVG legend showing CRUS land use classes
+    legendUrl: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="180" height="140">
+      <text x="5" y="15" font-family="Arial" font-size="11" font-weight="bold" fill="#333">Classificação CRUS</text>
+      <rect x="5" y="25" width="16" height="12" fill="#e74c3c" fill-opacity="0.6"/><text x="26" y="35" font-family="Arial" font-size="10" fill="#333">Solo Urbano</text>
+      <rect x="5" y="42" width="16" height="12" fill="#f39c12" fill-opacity="0.6"/><text x="26" y="52" font-family="Arial" font-size="10" fill="#333">Solo Urbanizável</text>
+      <rect x="5" y="59" width="16" height="12" fill="#27ae60" fill-opacity="0.6"/><text x="26" y="69" font-family="Arial" font-size="10" fill="#333">Solo Rural</text>
+      <rect x="5" y="76" width="16" height="12" fill="#2ecc71" fill-opacity="0.6"/><text x="26" y="86" font-family="Arial" font-size="10" fill="#333">Espaço Agrícola</text>
+      <rect x="5" y="93" width="16" height="12" fill="#16a085" fill-opacity="0.6"/><text x="26" y="103" font-family="Arial" font-size="10" fill="#333">Espaço Florestal</text>
+      <rect x="5" y="110" width="16" height="12" fill="#1abc9c" fill-opacity="0.6"/><text x="26" y="120" font-family="Arial" font-size="10" fill="#333">Espaço Natural</text>
+    </svg>`),
   },
 
   // Administrative boundaries - Municipalities (CAOP 2024)
@@ -166,241 +191,41 @@ export const PT_WMS_LAYERS: Record<string, WMSLayerConfig> = {
   },
 
   // =============================================================================
-  // REN/RAN Municipal Layers
+  // REN/RAN National Layers (DGT SRUP WMS)
   // =============================================================================
-  // These layers are served via /api/municipal-ren-ran endpoint which routes
-  // to the appropriate municipal ArcGIS service based on the municipality parameter.
-  // GIS endpoints are stored in the `portugal_municipalities` database table.
-  // 
-  // To add a new municipality:
-  // 1. Find the municipal GIS portal (usually sig.cm-{name}.pt/arcgis)
-  // 2. Locate the REN/RAN MapServer service and layer IDs
-  // 3. Update the municipality record in the database with ren_service/ran_service
+  // These layers cover all of Portugal from DGT's national SRUP services.
+  // They support EPSG:3857 (Web Mercator) and work directly with Mapbox.
+  // Single layer option that works everywhere - no need to select per municipality.
   // =============================================================================
 
-  // REN - Reserva Ecológica Nacional (Sintra)
-  ren_sintra: {
-    id: 'ren_sintra',
-    name: 'REN - Sintra',
-    shortName: 'REN Sintra',
-    description: 'Reserva Ecológica Nacional - Sintra',
-    url: '/api/municipal-ren-ran?type=ren&municipality=sintra&bbox={bbox-epsg-3857}',
-    layers: 'ren',
+  // REN - Reserva Ecológica Nacional (covers all of Portugal)
+  ren: {
+    id: 'ren',
+    name: 'REN (Reserva Ecológica)',
+    shortName: 'REN',
+    description: 'Proteção ecológica - restrições',
+    url: '/api/wms-proxy?source=pt-ren&SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=REN_em_Vigor&STYLES=&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    layers: 'REN_em_Vigor',
     opacity: 0.6,
     color: '#22c55e', // Green
-    provider: 'CM Sintra',
+    provider: 'DGT',
     country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-sintra.pt/arcgis/rest/services/WMS_Inspire/WMS_SRUP_REN_CMS/MapServer/legend?f=json',
+    legendUrl: 'https://servicos.dgterritorio.pt/SDISNITWMSSRUP_REN_PT1/service.svc/get?VERSION=1.3.0&REQUEST=getlegendgraphic&SERVICE=WMS&format=image/png&layer=REN_em_Vigor&style=Default',
   },
 
-  // RAN - Reserva Agrícola Nacional (Sintra)
-  ran_sintra: {
-    id: 'ran_sintra',
-    name: 'RAN - Sintra',
-    shortName: 'RAN Sintra',
-    description: 'Reserva Agrícola Nacional - Sintra',
-    url: '/api/municipal-ren-ran?type=ran&municipality=sintra&bbox={bbox-epsg-3857}',
-    layers: 'ran',
+  // RAN - Reserva Agrícola Nacional (covers all of Portugal)
+  ran: {
+    id: 'ran',
+    name: 'RAN (Reserva Agrícola)',
+    shortName: 'RAN',
+    description: 'Reserva agrícola - restrições',
+    url: '/api/wms-proxy?source=pt-ran&SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=Reserva_Agricola_Nacional&STYLES=&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    layers: 'Reserva_Agricola_Nacional',
     opacity: 0.6,
     color: '#eab308', // Yellow
-    provider: 'CM Sintra',
+    provider: 'DGT',
     country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-sintra.pt/arcgis/rest/services/WMS_Inspire/WMS_PDM20_Condicionantes/MapServer/legend?f=json&filter=RAN',
-  },
-
-  // REN - Reserva Ecológica Nacional (Seixal)
-  ren_seixal: {
-    id: 'ren_seixal',
-    name: 'REN - Seixal',
-    shortName: 'REN Seixal',
-    description: 'Reserva Ecológica Nacional - Seixal',
-    url: '/api/municipal-ren-ran?type=ren&municipality=seixal&bbox={bbox-epsg-3857}',
-    layers: 'ren',
-    opacity: 0.6,
-    color: '#16a34a', // Green variant
-    provider: 'CM Seixal',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-seixal.pt/arcgis/rest/services/SERV_GEST_TERRITORIO_INTER/MapServer/legend?f=json&layer=662',
-  },
-
-  // REN - Reserva Ecológica Nacional (Loulé - Algarve)
-  ren_loule: {
-    id: 'ren_loule',
-    name: 'REN - Loulé',
-    shortName: 'REN Loulé',
-    description: 'Reserva Ecológica Nacional - Loulé (Algarve)',
-    url: '/api/municipal-ren-ran?type=ren&municipality=loul%C3%A9&bbox={bbox-epsg-3857}',
-    layers: 'ren',
-    opacity: 0.6,
-    color: '#15803d', // Green variant
-    provider: 'CM Loulé',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://geoloule.cm-loule.pt/arcgisnprot/rest/services/MapasOnline/PMOT_vigor_COND_MO/MapServer/legend?f=json&filter=REN',
-  },
-
-  // RAN - Reserva Agrícola Nacional (Loulé - Algarve)
-  ran_loule: {
-    id: 'ran_loule',
-    name: 'RAN - Loulé',
-    shortName: 'RAN Loulé',
-    description: 'Reserva Agrícola Nacional - Loulé (Algarve)',
-    url: '/api/municipal-ren-ran?type=ran&municipality=loul%C3%A9&bbox={bbox-epsg-3857}',
-    layers: 'ran',
-    opacity: 0.6,
-    color: '#ca8a04', // Yellow variant
-    provider: 'CM Loulé',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://geoloule.cm-loule.pt/arcgisnprot/rest/services/MapasOnline/PMOT_vigor_COND_MO/MapServer/legend?f=json&filter=RAN',
-  },
-
-  // REN - Reserva Ecológica Nacional (Montijo)
-  ren_montijo: {
-    id: 'ren_montijo',
-    name: 'REN - Montijo',
-    shortName: 'REN Montijo',
-    description: 'Reserva Ecológica Nacional - Montijo',
-    url: '/api/municipal-ren-ran?type=ren&municipality=montijo&bbox={bbox-epsg-3857}',
-    layers: 'ren',
-    opacity: 0.6,
-    color: '#059669', // Green variant
-    provider: 'CM Montijo',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://mtgeo.mun-montijo.pt/arcgis/rest/services/ORDENAMENTO/PDM/MapServer/legend?f=json&layer=67',
-  },
-
-  // RAN - Reserva Agrícola Nacional (Montijo)
-  ran_montijo: {
-    id: 'ran_montijo',
-    name: 'RAN - Montijo',
-    shortName: 'RAN Montijo',
-    description: 'Reserva Agrícola Nacional - Montijo',
-    url: '/api/municipal-ren-ran?type=ran&municipality=montijo&bbox={bbox-epsg-3857}',
-    layers: 'ran',
-    opacity: 0.6,
-    color: '#d97706', // Yellow variant
-    provider: 'CM Montijo',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://mtgeo.mun-montijo.pt/arcgis/rest/services/ORDENAMENTO/PDM/MapServer/legend?f=json&layer=68',
-  },
-
-  // REN - Reserva Ecológica Nacional (Ovar)
-  ren_ovar: {
-    id: 'ren_ovar',
-    name: 'REN - Ovar',
-    shortName: 'REN Ovar',
-    description: 'Reserva Ecológica Nacional - Ovar',
-    url: '/api/municipal-ren-ran?type=ren&municipality=ovar&bbox={bbox-epsg-3857}',
-    layers: 'ren',
-    opacity: 0.6,
-    color: '#059669',
-    provider: 'CM Ovar',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://websig.cm-ovar.pt/arcgis/rest/services/2%C2%AA_AltPDM/MapServer/legend?f=json&layer=347',
-  },
-
-  // RAN - Reserva Agrícola Nacional (Ovar)
-  ran_ovar: {
-    id: 'ran_ovar',
-    name: 'RAN - Ovar',
-    shortName: 'RAN Ovar',
-    description: 'Reserva Agrícola Nacional - Ovar',
-    url: '/api/municipal-ren-ran?type=ran&municipality=ovar&bbox={bbox-epsg-3857}',
-    layers: 'ran',
-    opacity: 0.6,
-    color: '#d97706',
-    provider: 'CM Ovar',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://websig.cm-ovar.pt/arcgis/rest/services/2%C2%AA_AltPDM/MapServer/legend?f=json&layer=344',
-  },
-
-  // REN - Reserva Ecológica Nacional (Vizela)
-  ren_vizela: {
-    id: 'ren_vizela',
-    name: 'REN - Vizela',
-    shortName: 'REN Vizela',
-    description: 'Reserva Ecológica Nacional - Vizela',
-    url: '/api/municipal-ren-ran?type=ren&municipality=vizela&bbox={bbox-epsg-3857}',
-    layers: 'ren',
-    opacity: 0.6,
-    color: '#059669',
-    provider: 'CM Vizela',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-vizela.pt/arcgis/rest/services/PlanoDiretorMunicipal_2013/MapServer/legend?f=json&layer=6',
-  },
-
-  // RAN - Reserva Agrícola Nacional (Vizela)
-  ran_vizela: {
-    id: 'ran_vizela',
-    name: 'RAN - Vizela',
-    shortName: 'RAN Vizela',
-    description: 'Reserva Agrícola Nacional - Vizela',
-    url: '/api/municipal-ren-ran?type=ran&municipality=vizela&bbox={bbox-epsg-3857}',
-    layers: 'ran',
-    opacity: 0.6,
-    color: '#d97706',
-    provider: 'CM Vizela',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-vizela.pt/arcgis/rest/services/PlanoDiretorMunicipal_2013/MapServer/legend?f=json&layer=8',
-  },
-
-  // REN - Reserva Ecológica Nacional (Coimbra)
-  ren_coimbra: {
-    id: 'ren_coimbra',
-    name: 'REN - Coimbra',
-    shortName: 'REN Coimbra',
-    description: 'Reserva Ecológica Nacional - Coimbra',
-    url: '/api/municipal-ren-ran?type=ren&municipality=coimbra&bbox={bbox-epsg-3857}',
-    layers: 'ren',
-    opacity: 0.6,
-    color: '#059669',
-    provider: 'CM Coimbra',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-coimbra.pt/arcgis/rest/services/PDM_1994raster/MapServer/legend?f=json&layer=3',
-  },
-
-  // RAN - Reserva Agrícola Nacional (Coimbra)
-  ran_coimbra: {
-    id: 'ran_coimbra',
-    name: 'RAN - Coimbra',
-    shortName: 'RAN Coimbra',
-    description: 'Reserva Agrícola Nacional - Coimbra',
-    url: '/api/municipal-ren-ran?type=ran&municipality=coimbra&bbox={bbox-epsg-3857}',
-    layers: 'ran',
-    opacity: 0.6,
-    color: '#d97706',
-    provider: 'CM Coimbra',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-coimbra.pt/arcgis/rest/services/PDM_1994raster/MapServer/legend?f=json&layer=2',
-  },
-
-  // REN - Reserva Ecológica Nacional (Seia)
-  ren_seia: {
-    id: 'ren_seia',
-    name: 'REN - Seia',
-    shortName: 'REN Seia',
-    description: 'Reserva Ecológica Nacional - Seia',
-    url: '/api/municipal-ren-ran?type=ren&municipality=seia&bbox={bbox-epsg-3857}',
-    layers: 'ren',
-    opacity: 0.6,
-    color: '#059669',
-    provider: 'CM Seia',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-seia.pt/arcgis/rest/services/PC_RecursosNaturais/MapServer/legend?f=json&layer=37',
-  },
-
-  // RAN - Reserva Agrícola Nacional (Seia)
-  ran_seia: {
-    id: 'ran_seia',
-    name: 'RAN - Seia',
-    shortName: 'RAN Seia',
-    description: 'Reserva Agrícola Nacional - Seia',
-    url: '/api/municipal-ren-ran?type=ran&municipality=seia&bbox={bbox-epsg-3857}',
-    layers: 'ran',
-    opacity: 0.6,
-    color: '#d97706',
-    provider: 'CM Seia',
-    country: 'PT',
-    legendUrl: '/api/arcgis-legend?url=https://sig.cm-seia.pt/arcgis/rest/services/PC_RecursosNaturais/MapServer/legend?f=json&layer=3',
+    legendUrl: 'https://servicos.dgterritorio.pt/SDISNITWMSSRUP_RAN_PT1/service.svc/get?VERSION=1.3.0&REQUEST=getlegendgraphic&SERVICE=WMS&format=image/png&layer=Reserva_Agricola_Nacional&style=Default',
   },
 
 };
@@ -440,6 +265,22 @@ export function getLayerConfig(country: 'PT' | 'ES', layerId: string): WMSLayerC
 
 // Default enabled layers
 export const DEFAULT_ENABLED_LAYERS: Record<'PT' | 'ES', string[]> = {
-  PT: ['cadastro', 'caop'], // Cadastre (vector tiles) + Admin boundaries enabled by default
-  ES: ['cadastre'],
+  PT: ['plots', 'cadastro', 'caop'], // Plots + Cadastre + Admin boundaries enabled by default
+  ES: ['plots', 'cadastre'],
+};
+
+// Special "plots" layer config (not a WMS layer, but allows toggling plot markers)
+export const PLOTS_LAYER_CONFIG: WMSLayerConfig = {
+  id: 'plots',
+  name: 'Land For Sale',
+  shortName: 'Land for Sale',
+  description: 'Property listings',
+  url: '', // Not used - plots are rendered from database
+  layers: '',
+  opacity: 1,
+  color: '#3b82f6', // Blue
+  provider: 'Yonder',
+  country: 'PT',
+  type: 'geojson',
+  legendUrl: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="30"><rect x="5" y="5" width="40" height="18" rx="4" fill="white" stroke="#e5e7eb"/><text x="10" y="18" font-family="Arial" font-size="10" font-weight="bold" fill="#111">€Price</text><polygon points="25,23 22,28 28,28" fill="white"/></svg>'),
 };

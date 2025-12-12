@@ -119,6 +119,21 @@ export interface ZoningData {
 // REN/RAN data types
 export interface RenRanData {
   sourceLayer?: string;
+  /** Type code (TIPOREN, TIPORAN, etc.) */
+  type?: string;
+  /** Description/designation of the restriction */
+  designation?: string;
+  /** Area in hectares */
+  areaHa?: number;
+  /** Legal reference (diploma, lei) */
+  legalRef?: string;
+  /** Category/class */
+  category?: string;
+  /** Subcategory */
+  subcategory?: string;
+  /** Municipality name */
+  municipality?: string;
+  /** Raw attributes for completeness */
   attributes?: Record<string, unknown>;
 }
 

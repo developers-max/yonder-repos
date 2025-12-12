@@ -28,6 +28,105 @@ const AX = axios.create({
   httpsAgent,
 });
 
+// DGT National SRUP WFS endpoints (fallback when municipal services unavailable)
+// Reference: https://ogcapi.dgterritorio.gov.pt/collections/point/items/{record-id}
+const DGT_SRUP_WFS = {
+  REN: 'https://servicos.dgterritorio.pt/SDISNITWFSSRUP_REN_PT1/WFService.aspx',
+  RAN: 'https://servicos.dgterritorio.pt/SDISNITWFSSRUP_RAN_PT1/WFService.aspx',
+  // Regional REN services (faster than national)
+  REN_NORTE: 'https://servicos.dgterritorio.pt/SDISNITWFSSRUP_REN_NORTE/WFService.aspx',
+  REN_CENTRO: 'https://servicos.dgterritorio.pt/SDISNITWFSSRUP_REN_CENTRO/WFService.aspx',
+  REN_LVT: 'https://servicos.dgterritorio.pt/SDISNITWFSSRUP_REN_LVT/WFService.aspx',
+  REN_ALENTEJO: 'https://servicos.dgterritorio.pt/SDISNITWFSSRUP_REN_ALENTEJO/WFService.aspx',
+  REN_ALGARVE: 'https://servicos.dgterritorio.pt/SDISNITWFSSRUP_REN_ALGARVE/WFService.aspx',
+};
+
+// Layer names from WFS GetCapabilities
+const DGT_WFS_LAYERS = {
+  REN: 'gmgml:REN_Nacional',
+  RAN: 'gmgml:RAN',
+};
+
+/**
+ * Query national DGT SRUP WFS service for REN/RAN
+ * Uses WFS GetFeature with FILTER by municipality (CONCELHO)
+ * Note: DGT services use Intergraph GeoMedia WFS, not GeoServer - CQL_FILTER not supported
+ */
+async function queryNationalSRUPWFS(
+  lat: number,
+  lng: number,
+  wfsUrl: string,
+  typeName: string,
+  layerId: string,
+  layerName: string,
+  municipalityName?: string
+): Promise<LayerResult> {
+  try {
+    // Build WFS request - filter by municipality if available (much faster than spatial filter)
+    const params = new URLSearchParams({
+      service: 'WFS',
+      version: '2.0.0',
+      request: 'GetFeature',
+      typeNames: typeName,
+      outputFormat: 'application/vnd.geo+json',
+      count: '10',
+    });
+
+    // Add municipality filter if available (FES 2.0 XML filter)
+    if (municipalityName) {
+      const filter = `<fes:Filter xmlns:fes="http://www.opengis.net/fes/2.0"><fes:PropertyIsEqualTo><fes:ValueReference>CONCELHO</fes:ValueReference><fes:Literal>${municipalityName.toUpperCase()}</fes:Literal></fes:PropertyIsEqualTo></fes:Filter>`;
+      params.set('FILTER', filter);
+    }
+
+    const response = await AX.get(`${wfsUrl}?${params.toString()}`, {
+      timeout: 30000, // Longer timeout for national services
+    });
+    
+    const data = response.data;
+    
+    // Check if we got valid GeoJSON
+    if (!data || data.type !== 'FeatureCollection') {
+      return { layerId, layerName, found: false, error: 'Invalid response from WFS' };
+    }
+
+    const features = data.features || [];
+    if (features.length === 0) {
+      return { layerId, layerName, found: false };
+    }
+
+    // Extract attributes from first feature
+    const feature = features[0];
+    const attrs = feature.properties || {};
+
+    const renRanData: RenRanData = {
+      sourceLayer: `DGT SRUP ${typeName}`,
+      // Standard attribute names from DGT SRUP (RAN and REN have different schemas)
+      type: attrs.TIPOLOGIA || attrs.TIPOREN || attrs.TIPORAN || attrs.TIPO,
+      designation: attrs.DESIGNACAO || attrs['SERVIDÃO'] || attrs.SERVIDAO || attrs.DESCRICAO,
+      areaHa: attrs.AREA_HA || attrs.Area_ha,
+      legalRef: attrs.LEI_TIPO || attrs.SERV_LEI || attrs.DIPLOMA || attrs.LEGISLACAO,
+      category: attrs.SERVIDAO || attrs['SERVIDÃO'] || attrs.CATEGORIA || attrs.CLASSE,
+      subcategory: attrs.DINAMICA || attrs['DINÂMICA'] || attrs.SUBCATEGORIA,
+      municipality: attrs.CONCELHO || attrs.MUNICIPIO,
+      attributes: attrs,
+    };
+
+    return {
+      layerId,
+      layerName,
+      found: true,
+      data: renRanData as unknown as Record<string, unknown>,
+    };
+  } catch (error) {
+    return {
+      layerId,
+      layerName,
+      found: false,
+      error: error instanceof Error ? error.message : 'Unknown error querying national WFS',
+    };
+  }
+}
+
 /**
  * Query CRUS zoning and return as LayerResult
  */
@@ -115,11 +214,30 @@ async function queryMunicipalRenRan(
       return { layerId, layerName, found: false };
     }
 
-    // Return first matching result
+    // Return first matching result with parsed attributes
     const result = results[0];
+    const attrs = result.attributes || {};
+    
+    // Extract common REN/RAN attribute fields (names vary by municipality)
     const renRanData: RenRanData = {
       sourceLayer: result.layerName,
-      attributes: result.attributes,
+      // Type/category
+      type: attrs.TIPOREN || attrs.TIPORAN || attrs.TIPO || attrs.Tipo || attrs.TYPE,
+      // Description/designation
+      designation: attrs.DESIGNACAO || attrs.Designacao || attrs.DESCRICAO || attrs.Descricao || 
+                   attrs.DESIGNA || attrs.DESC || attrs.NOME || attrs.Nome,
+      // Area
+      areaHa: attrs.AREA_HA || attrs.Area_ha || attrs.AREAHA || attrs.Shape_Area,
+      // Legal reference
+      legalRef: attrs.DIPLOMA || attrs.Diploma || attrs.LEGISLACAO || attrs.LEI,
+      // Category/class
+      category: attrs.CATEGORIA || attrs.Categoria || attrs.CLASSE || attrs.Classe,
+      // Subcategory
+      subcategory: attrs.SUBCATEGORIA || attrs.Subcategoria || attrs.SUBCLASSE,
+      // Municipality (if present)
+      municipality: attrs.MUNICIPIO || attrs.Municipio || attrs.CONCELHO,
+      // Raw attributes for debugging/completeness
+      attributes: attrs,
     };
 
     return {
@@ -140,7 +258,7 @@ async function queryMunicipalRenRan(
 
 /**
  * Query REN (Reserva Ecológica Nacional)
- * Requires municipality record with REN service URL
+ * Uses municipal ArcGIS service if available, falls back to national DGT WFS
  */
 export async function queryREN(
   lat: number,
@@ -150,29 +268,36 @@ export async function queryREN(
   const layerId = 'pt-ren';
   const layerName = 'Reserva Ecológica Nacional';
 
-  if (!municipality?.gisVerified || !municipality.renService?.url) {
-    return {
+  // Try municipal ArcGIS service first (faster, more detailed)
+  if (municipality?.gisVerified && municipality.renService?.url) {
+    const municipalResult = await queryMunicipalRenRan(
+      lat,
+      lng,
+      municipality.renService.url,
       layerId,
-      layerName,
-      found: false,
-      error: municipality
-        ? `No REN service available for ${municipality.name}`
-        : 'Municipality not identified',
-    };
+      `REN - ${municipality.name}`
+    );
+    
+    if (municipalResult.found) {
+      return municipalResult;
+    }
   }
 
-  return queryMunicipalRenRan(
+  // Fallback to national DGT SRUP WFS (filter by municipality for speed)
+  return queryNationalSRUPWFS(
     lat,
     lng,
-    municipality.renService.url,
+    DGT_SRUP_WFS.REN,
+    DGT_WFS_LAYERS.REN,
     layerId,
-    `REN - ${municipality.name}`
+    layerName,
+    municipality?.name
   );
 }
 
 /**
  * Query RAN (Reserva Agrícola Nacional)
- * Requires municipality record with RAN service URL
+ * Uses municipal ArcGIS service if available, falls back to national DGT WFS
  */
 export async function queryRAN(
   lat: number,
@@ -182,22 +307,29 @@ export async function queryRAN(
   const layerId = 'pt-ran';
   const layerName = 'Reserva Agrícola Nacional';
 
-  if (!municipality?.gisVerified || !municipality.ranService?.url) {
-    return {
+  // Try municipal ArcGIS service first (faster, more detailed)
+  if (municipality?.gisVerified && municipality.ranService?.url) {
+    const municipalResult = await queryMunicipalRenRan(
+      lat,
+      lng,
+      municipality.ranService.url,
       layerId,
-      layerName,
-      found: false,
-      error: municipality
-        ? `No RAN service available for ${municipality.name}`
-        : 'Municipality not identified',
-    };
+      `RAN - ${municipality.name}`
+    );
+    
+    if (municipalResult.found) {
+      return municipalResult;
+    }
   }
 
-  return queryMunicipalRenRan(
+  // Fallback to national DGT SRUP WFS (filter by municipality for speed)
+  return queryNationalSRUPWFS(
     lat,
     lng,
-    municipality.ranService.url,
+    DGT_SRUP_WFS.RAN,
+    DGT_WFS_LAYERS.RAN,
     layerId,
-    `RAN - ${municipality.name}`
+    layerName,
+    municipality?.name
   );
 }

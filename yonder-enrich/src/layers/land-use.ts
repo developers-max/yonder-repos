@@ -73,11 +73,19 @@ export async function queryCOS(
       layerName,
       found: true,
       data: {
-        cos: props.COS2018_Leg || props.Descricao || props.DESCRICAO,
-        cosLevel1: props.Nivel1,
-        cosLevel2: props.Nivel2,
-        cosLevel3: props.Nivel3,
-        cosCode: props.COS2018,
+        // Most detailed classification (Level 4, or fallback to Level 3)
+        cos: props.COS18n4_L || props.COS18n3_L || props.COS2018_Leg || props.Descricao,
+        cosCode: props.COS18n4_C || props.COS18n3_C || props.COS2018,
+        // Level hierarchy
+        cosLevel1: props.COS18n1_L || props.Nivel1,
+        cosLevel1Code: props.COS18n1_C,
+        cosLevel2: props.COS18n2_L || props.Nivel2,
+        cosLevel2Code: props.COS18n2_C,
+        cosLevel3: props.COS18n3_L || props.Nivel3,
+        cosLevel3Code: props.COS18n3_C,
+        cosLevel4: props.COS18n4_L,
+        cosLevel4Code: props.COS18n4_C,
+        areaHa: props.Area_ha,
         source: 'DGT COS 2018',
       },
     };
@@ -118,8 +126,8 @@ export async function queryCLC(
       SERVICE: 'WMS',
       VERSION: '1.1.1',
       REQUEST: 'GetFeatureInfo',
-      LAYERS: 'clc2012',
-      QUERY_LAYERS: 'clc2012',
+      LAYERS: 'CLC2012',
+      QUERY_LAYERS: 'CLC2012',
       INFO_FORMAT: 'application/json',
       SRS: 'EPSG:4326',
       BBOX: bbox,
@@ -142,12 +150,15 @@ export async function queryCLC(
       layerName,
       found: true,
       data: {
-        clc: props.LABEL3 || props.Label3 || props.Descricao,
-        clcCode: props.CODE_18 || props.Code_18,
+        // Main classification label
+        clc: props.Legenda || props.LABEL3 || props.Label3 || props.Descricao,
+        clcCode: props.CLC2012 || props.CODE_18 || props.Code_18,
+        areaHa: props.AREA_ha,
+        // Fallback level fields (may not be present in all responses)
         clcLevel1: props.LABEL1 || props.Label1,
         clcLevel2: props.LABEL2 || props.Label2,
-        clcLevel3: props.LABEL3 || props.Label3,
-        source: 'CORINE Land Cover 2018',
+        clcLevel3: props.Legenda || props.LABEL3 || props.Label3,
+        source: 'CORINE Land Cover 2012',
       },
     };
   } catch (error) {

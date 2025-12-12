@@ -16,6 +16,8 @@ import { GenerateReportResultComponent } from '../project/generate-report-result
 import type { GenerateReportResult } from '@/lib/ai/tools/generate-report';
 import { LayerInfoResultComponent } from '../layer/layer-info-result';
 import type { GetLayerInfoResult } from '@/lib/ai/tools/get-layer-info';
+import { NavigateToLocationResultComponent } from '../map/navigate-to-location-result';
+import type { NavigateToLocationResult } from '@/lib/ai/tools/navigate-to-location';
 
 interface ToolRendererProps {
   toolName: string;
@@ -108,6 +110,13 @@ export function ToolRenderer({
       return (
         <LayerInfoResultComponent
           result={result as GetLayerInfoResult}
+        />
+      );
+
+    case 'navigateToLocation':
+      return (
+        <NavigateToLocationResultComponent
+          result={result as NavigateToLocationResult}
         />
       );
 
