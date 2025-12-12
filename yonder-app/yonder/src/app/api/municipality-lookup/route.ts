@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         'User-Agent': 'Yonder-Municipality-Lookup/1.0',
       },
       signal: controller.signal,
-      next: { revalidate: 3600 },
+      cache: 'no-store', // Disable Next.js data cache
     });
 
     clearTimeout(timeoutId);
