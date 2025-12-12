@@ -62,8 +62,7 @@ export async function GET(request: NextRequest) {
           'User-Agent': 'Yonder-WMS-Proxy/1.0',
         },
         signal: controller.signal,
-        // Cache for 1 hour
-        next: { revalidate: 3600 },
+        cache: 'no-store', // Disable Next.js data cache
       });
       
       clearTimeout(timeoutId);
