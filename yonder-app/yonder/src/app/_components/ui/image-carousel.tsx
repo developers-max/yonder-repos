@@ -17,6 +17,18 @@ interface ImageCarouselProps {
   alt?: string;
 }
 
+/**
+ * Proxy HTTP images through our HTTPS API to avoid mixed content warnings
+ */
+function getProxiedImageUrl(url: string): string {
+  if (!url) return url;
+  // Only proxy HTTP URLs - HTTPS URLs can be loaded directly
+  if (url.startsWith('http://')) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
 // Airbnb-style image carousel component
 export function ImageCarousel({ images, alt = "Image" }: ImageCarouselProps) {
   const [currentSlide, setCurrentSlide] = useState(1);
@@ -59,7 +71,7 @@ export function ImageCarousel({ images, alt = "Image" }: ImageCarouselProps) {
                 fill
                 quality={100}
                 unoptimized
-                src={image}
+                src={getProxiedImageUrl(image)}
                 alt={`${alt} ${index + 1}`}
                 className="object-cover transition-transform duration-300 hover:scale-105"
               />

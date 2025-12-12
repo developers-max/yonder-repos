@@ -324,7 +324,7 @@ Read full \`attributes\` object for legal references, dates, official designatio
             polygon,
             country: country || 'PT',
           }),
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(300000), // 5 minutes to match API route
         });
       } else if (lat !== undefined && lng !== undefined) {
         // GET request with coordinates
@@ -338,7 +338,7 @@ Read full \`attributes\` object for legal references, dates, official designatio
         }
         
         response = await fetch(`${baseUrl}/api/layer-info?${queryParams}`, {
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(300000), // 5 minutes to match API route
         });
       } else {
         return {
