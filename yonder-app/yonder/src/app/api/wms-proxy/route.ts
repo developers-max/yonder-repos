@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Vercel function configuration - Fluid Compute enabled: 5 min timeout for slow WMS services
+export const maxDuration = 300;
+
 // Allowed WMS base URLs (whitelist for security)
 // Portugal sources: DGT SNIT services (servicos.dgterritorio.pt) and geo2 geoserver
 const ALLOWED_WMS_SOURCES: Record<string, string> = {
@@ -47,10 +50,11 @@ export async function GET(request: NextRequest) {
     const wmsUrl = `${baseUrl}?${wmsParams.toString()}`;
     
     // Create abort controller for timeout
-    // SNIT services (pt-ren, pt-ran) are notoriously slow - give them 30s
-    // Other services get 15s
+    // Fluid Compute enabled: up to 800s on Pro, we use 300s (5 min) for slow services
+    // SNIT services (pt-ren, pt-ran) are notoriously slow - give them full 5 min
+    // Other services get 60s
     const isSnitService = source?.startsWith('pt-ren') || source?.startsWith('pt-ran');
-    const timeoutMs = isSnitService ? 30000 : 15000;
+    const timeoutMs = isSnitService ? 300000 : 60000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
