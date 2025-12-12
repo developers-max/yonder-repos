@@ -265,8 +265,8 @@ export function getLayerConfig(country: 'PT' | 'ES', layerId: string): WMSLayerC
 
 // Default enabled layers
 export const DEFAULT_ENABLED_LAYERS: Record<'PT' | 'ES', string[]> = {
-  PT: ['plots', 'cadastro', 'caop'], // Plots + Cadastre + Admin boundaries enabled by default
-  ES: ['plots', 'cadastre'],
+  PT: ['plots'], // Only Land for Sale enabled by default
+  ES: ['plots'],
 };
 
 // Special "plots" layer config (not a WMS layer, but allows toggling plot markers)
