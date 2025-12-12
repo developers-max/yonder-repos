@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MapPin, CheckCircle, AlertCircle } from 'lucide-react';
+import { MapPin, CheckCircle, AlertCircle, X } from 'lucide-react';
 import type { NavigateToLocationResult } from '@/lib/ai/tools/navigate-to-location';
 
 interface NavigateToLocationResultProps {
@@ -12,25 +12,32 @@ export function NavigateToLocationResultComponent({ result }: NavigateToLocation
   const [hasNavigated, setHasNavigated] = useState(false);
   const isError = !!result.error;
   const data = result.data;
+  const isClearAction = data?.action === 'clear';
 
   // Auto-dispatch navigation event when component mounts
   useEffect(() => {
     if (data && !hasNavigated) {
-      window.dispatchEvent(new CustomEvent('navigateToMapLocation', {
-        detail: {
-          latitude: data.latitude,
-          longitude: data.longitude,
-          zoom: data.zoom,
-          label: data.label,
-        }
-      }));
+      if (isClearAction) {
+        // Dispatch clear event
+        window.dispatchEvent(new CustomEvent('clearMapPin'));
+      } else if (data.latitude !== undefined && data.longitude !== undefined) {
+        // Dispatch navigate event
+        window.dispatchEvent(new CustomEvent('navigateToMapLocation', {
+          detail: {
+            latitude: data.latitude,
+            longitude: data.longitude,
+            zoom: data.zoom,
+            label: data.label,
+          }
+        }));
+      }
       setHasNavigated(true);
     }
-  }, [data, hasNavigated]);
+  }, [data, hasNavigated, isClearAction]);
 
   // Manual re-navigate handler
   const handleNavigate = () => {
-    if (data) {
+    if (data && data.latitude !== undefined && data.longitude !== undefined) {
       window.dispatchEvent(new CustomEvent('navigateToMapLocation', {
         detail: {
           latitude: data.latitude,
@@ -42,26 +49,36 @@ export function NavigateToLocationResultComponent({ result }: NavigateToLocation
     }
   };
 
+  // Get display text for the result
+  const getDisplayText = () => {
+    if (isError) return String(result.error?.details || 'Unknown error');
+    if (isClearAction) return 'Pin cleared from map';
+    if (data?.label) return data.label;
+    if (data?.latitude !== undefined && data?.longitude !== undefined) {
+      return `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
+    }
+    return 'Location updated';
+  };
+
   return (
     <div className="bg-white border border-gray-200 shadow-sm rounded-xl mt-3 overflow-hidden">
       <div className="p-5">
         <div className="flex items-center gap-3 mb-4">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isError ? 'bg-red-100' : 'bg-blue-100'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isError ? 'bg-red-100' : isClearAction ? 'bg-gray-100' : 'bg-blue-100'}`}>
             {isError ? (
               <AlertCircle className="w-4 h-4 text-red-600" />
+            ) : isClearAction ? (
+              <X className="w-4 h-4 text-gray-600" />
             ) : (
               <MapPin className="w-4 h-4 text-blue-600" />
             )}
           </div>
           <div className="flex-1">
             <h3 className="font-semibold text-gray-900 text-sm">
-              {isError ? 'Navigation Failed' : 'Map Navigation'}
+              {isError ? 'Navigation Failed' : isClearAction ? 'Pin Cleared' : 'Map Navigation'}
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              {isError 
-                ? String(result.error?.details || 'Unknown error')
-                : data?.label || `${data?.latitude.toFixed(4)}, ${data?.longitude.toFixed(4)}`
-              }
+              {getDisplayText()}
             </p>
           </div>
         </div>
@@ -81,8 +98,8 @@ export function NavigateToLocationResultComponent({ result }: NavigateToLocation
           </div>
         )}
 
-        {/* Success state */}
-        {!isError && data && (
+        {/* Success state - Navigate action */}
+        {!isError && data && !isClearAction && data.latitude !== undefined && data.longitude !== undefined && (
           <div className="space-y-3">
             {/* Coordinates display */}
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
@@ -108,6 +125,16 @@ export function NavigateToLocationResultComponent({ result }: NavigateToLocation
               <MapPin className="w-4 h-4" />
               Navigate Again
             </button>
+          </div>
+        )}
+
+        {/* Success state - Clear action */}
+        {!isError && data && isClearAction && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+            <div className="flex items-center gap-1.5 text-gray-600">
+              <CheckCircle className="w-4 h-4" />
+              <span className="text-xs font-medium">Pin removed from map</span>
+            </div>
           </div>
         )}
       </div>
