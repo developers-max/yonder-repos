@@ -28,6 +28,33 @@ const AX = axios.create({
   httpsAgent,
 });
 
+/**
+ * Retry a function with exponential backoff
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 2,
+  baseDelayMs: number = 1000
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      // Don't retry on 4xx errors (client errors)
+      if (axios.isAxiosError(error) && error.response?.status && error.response.status >= 400 && error.response.status < 500) {
+        throw lastError;
+      }
+      if (attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 // DGT National SRUP WFS endpoints (fallback when municipal services unavailable)
 // Reference: https://ogcapi.dgterritorio.gov.pt/collections/point/items/{record-id}
 const DGT_SRUP_WFS = {
@@ -78,9 +105,13 @@ async function queryNationalSRUPWFS(
       params.set('FILTER', filter);
     }
 
-    const response = await AX.get(`${wfsUrl}?${params.toString()}`, {
-      timeout: 30000, // Longer timeout for national services
-    });
+    const response = await withRetry(
+      () => AX.get(`${wfsUrl}?${params.toString()}`, {
+        timeout: 45000, // Longer timeout for slow national services
+      }),
+      1, // 1 retry (2 total attempts)
+      2000 // 2s initial delay
+    );
     
     const data = response.data;
     
@@ -257,8 +288,21 @@ async function queryMunicipalRenRan(
 }
 
 /**
+ * Determine which regional REN service to use based on coordinates
+ * Portugal regions: Norte, Centro, LVT (Lisboa e Vale do Tejo), Alentejo, Algarve
+ */
+function getRegionalRENService(lat: number, lng: number): string | null {
+  // Approximate regional boundaries (latitude-based, simplified)
+  if (lat >= 41.0) return DGT_SRUP_WFS.REN_NORTE;
+  if (lat >= 39.5) return DGT_SRUP_WFS.REN_CENTRO;
+  if (lat >= 38.5) return DGT_SRUP_WFS.REN_LVT;
+  if (lat >= 37.5) return DGT_SRUP_WFS.REN_ALENTEJO;
+  return DGT_SRUP_WFS.REN_ALGARVE;
+}
+
+/**
  * Query REN (Reserva Ecológica Nacional)
- * Uses municipal ArcGIS service if available, falls back to national DGT WFS
+ * Uses municipal ArcGIS service if available, falls back to regional then national DGT WFS
  */
 export async function queryREN(
   lat: number,
@@ -270,29 +314,64 @@ export async function queryREN(
 
   // Try municipal ArcGIS service first (faster, more detailed)
   if (municipality?.gisVerified && municipality.renService?.url) {
-    const municipalResult = await queryMunicipalRenRan(
-      lat,
-      lng,
-      municipality.renService.url,
-      layerId,
-      `REN - ${municipality.name}`
-    );
-    
-    if (municipalResult.found) {
-      return municipalResult;
+    try {
+      const municipalResult = await queryMunicipalRenRan(
+        lat,
+        lng,
+        municipality.renService.url,
+        layerId,
+        `REN - ${municipality.name}`
+      );
+      
+      if (municipalResult.found) {
+        return municipalResult;
+      }
+    } catch {
+      // Municipal service failed, continue to fallback
     }
   }
 
-  // Fallback to national DGT SRUP WFS (filter by municipality for speed)
-  return queryNationalSRUPWFS(
-    lat,
-    lng,
-    DGT_SRUP_WFS.REN,
-    DGT_WFS_LAYERS.REN,
-    layerId,
-    layerName,
-    municipality?.name
-  );
+  // Try regional REN service first (faster than national, less load)
+  const regionalService = getRegionalRENService(lat, lng);
+  if (regionalService) {
+    try {
+      const regionalResult = await queryNationalSRUPWFS(
+        lat,
+        lng,
+        regionalService,
+        DGT_WFS_LAYERS.REN,
+        layerId,
+        layerName,
+        municipality?.name
+      );
+      if (regionalResult.found || !regionalResult.error) {
+        return regionalResult;
+      }
+    } catch {
+      // Regional service failed, continue to national fallback
+    }
+  }
+
+  // Fallback to national DGT SRUP WFS
+  try {
+    return await queryNationalSRUPWFS(
+      lat,
+      lng,
+      DGT_SRUP_WFS.REN,
+      DGT_WFS_LAYERS.REN,
+      layerId,
+      layerName,
+      municipality?.name
+    );
+  } catch {
+    // All services failed - return graceful degradation
+    return {
+      layerId,
+      layerName,
+      found: false,
+      error: 'DGT REN services temporarily unavailable',
+    };
+  }
 }
 
 /**
@@ -309,27 +388,41 @@ export async function queryRAN(
 
   // Try municipal ArcGIS service first (faster, more detailed)
   if (municipality?.gisVerified && municipality.ranService?.url) {
-    const municipalResult = await queryMunicipalRenRan(
-      lat,
-      lng,
-      municipality.ranService.url,
-      layerId,
-      `RAN - ${municipality.name}`
-    );
-    
-    if (municipalResult.found) {
-      return municipalResult;
+    try {
+      const municipalResult = await queryMunicipalRenRan(
+        lat,
+        lng,
+        municipality.ranService.url,
+        layerId,
+        `RAN - ${municipality.name}`
+      );
+      
+      if (municipalResult.found) {
+        return municipalResult;
+      }
+    } catch {
+      // Municipal service failed, continue to fallback
     }
   }
 
   // Fallback to national DGT SRUP WFS (filter by municipality for speed)
-  return queryNationalSRUPWFS(
-    lat,
-    lng,
-    DGT_SRUP_WFS.RAN,
-    DGT_WFS_LAYERS.RAN,
-    layerId,
-    layerName,
-    municipality?.name
-  );
+  try {
+    return await queryNationalSRUPWFS(
+      lat,
+      lng,
+      DGT_SRUP_WFS.RAN,
+      DGT_WFS_LAYERS.RAN,
+      layerId,
+      layerName,
+      municipality?.name
+    );
+  } catch {
+    // National service failed - return graceful degradation
+    return {
+      layerId,
+      layerName,
+      found: false,
+      error: 'DGT RAN service temporarily unavailable',
+    };
+  }
 }
