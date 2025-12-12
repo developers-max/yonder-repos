@@ -195,12 +195,22 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
       }, 100);
     };
 
+    const handleClearMapPin = () => {
+      // Clear the dropped pin from the map
+      setDroppedPin(null);
+      // Trigger map resize to force re-render
+      setTimeout(() => {
+        setResizeKey(prev => prev + 1);
+      }, 50);
+    };
+
     window.addEventListener('applyPlotFilters', handleApplyFilters as EventListener);
     window.addEventListener('switchToProjectTab', handleSwitchToProject as EventListener);
     window.addEventListener('switchToBrowseTab', handleSwitchToBrowse as EventListener);
     window.addEventListener('refreshProjectData', handleRefreshProjectData as EventListener);
     window.addEventListener('contactRealtorRequested', handleContactRealtorRequested as EventListener);
     window.addEventListener('navigateToMapLocation', handleNavigateToMapLocation as EventListener);
+    window.addEventListener('clearMapPin', handleClearMapPin as EventListener);
 
     return () => {
       window.removeEventListener('applyPlotFilters', handleApplyFilters as EventListener);
@@ -209,6 +219,7 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
       window.removeEventListener('refreshProjectData', handleRefreshProjectData as EventListener);
       window.removeEventListener('contactRealtorRequested', handleContactRealtorRequested as EventListener);
       window.removeEventListener('navigateToMapLocation', handleNavigateToMapLocation as EventListener);
+      window.removeEventListener('clearMapPin', handleClearMapPin as EventListener);
     };
   }, [router, filters]);
 

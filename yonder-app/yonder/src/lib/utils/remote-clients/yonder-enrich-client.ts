@@ -9,7 +9,8 @@ import { getAuthHeaders } from './gcloud-auth';
 const ENRICH_API_URL = process.env.YONDER_ENRICH_API_URL || 'https://yonder-enrich-634586379515.us-central1.run.app';
 
 // Timeout configuration for API calls
-const ENRICH_TIMEOUT_MS = 120000; // 2 minutes for enrichment (external API calls can be slow)
+// Vercel Hobby has 10s timeout, Pro has 60s - keep under limit
+const ENRICH_TIMEOUT_MS = 55000; // 55 seconds (under Vercel Pro 60s limit)
 
 export interface MunicipalityInfo {
   id?: number;
@@ -111,6 +112,7 @@ async function makeEnrichRequest<T>(
       ...options,
       headers,
       signal: controller.signal,
+      cache: 'no-store', // Disable Next.js data cache
     });
 
     clearTimeout(timeoutId);
