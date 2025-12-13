@@ -10,7 +10,7 @@ import * as path from 'path';
 /**
  * Type representing the available enrichment options
  */
-type EnrichmentType = 'amenities' | 'climate' | 'population' | 'municipalities' | 'combined' | 'casafari' | 'casafari-search' | 'crus-zoning' | 'casafari-realtors' | 'llm-realtors' | 'llm-municipalities' | 'pdm-embeddings' | 'crus-translate' | 'plots-loader' | 'plots-realtors' | 'images' | 'sync-price-size' | 'plot-search' | 'plots-loader-country' | 'spain-zoning' | 'spain-cadastre' | 'portugal-cadastre' | 'germany-zoning';
+type EnrichmentType = 'amenities' | 'climate' | 'population' | 'municipalities' | 'combined' | 'casafari' | 'casafari-search' | 'crus-zoning' | 'casafari-realtors' | 'llm-realtors' | 'llm-municipalities' | 'pdm-embeddings' | 'crus-translate' | 'plots-loader' | 'plots-realtors' | 'images' | 'sync-price-size' | 'plot-search' | 'plots-loader-country' | 'spain-zoning' | 'spain-cadastre' | 'portugal-cadastre' | 'germany-zoning' | 'exa-municipalities';
 
 /**
  * Creates a CLI interface to prompt the user for selecting an enrichment type
@@ -44,8 +44,9 @@ async function promptForEnrichmentType(): Promise<EnrichmentType> {
     console.log('18. Germany zoning (State/Länder WFS - Bebauungspläne)');
     console.log('19. LLM enrichment: find municipality websites, country codes, PDM documents (Gemini)');
     console.log('20. PDM document embeddings (OpenAI + pgvector)');
+    console.log('21. Exa Search: find municipality websites (Exa API)');
     
-    rl.question('\nSelect a type of enrichment (1-20): ', (answer) => {
+    rl.question('\nSelect a type of enrichment (1-21): ', (answer) => {
       rl.close();
       
       switch(answer.trim()) {
@@ -108,6 +109,9 @@ async function promptForEnrichmentType(): Promise<EnrichmentType> {
           break;
         case '20':
           resolve('pdm-embeddings');
+          break;
+        case '21':
+          resolve('exa-municipalities');
           break;
         default:
           console.log('Invalid selection, defaulting to combined.');
@@ -305,12 +309,21 @@ async function main() {
         const { enrichMunicipalitiesWithGemini } = await import('./llm/municipalities');
         const limit = process.env.LLM_MUNICIPALITIES_LIMIT ? Number(process.env.LLM_MUNICIPALITIES_LIMIT) : undefined;
         const concurrency = process.env.LLM_MUNICIPALITIES_CONCURRENCY ? Number(process.env.LLM_MUNICIPALITIES_CONCURRENCY) : undefined;
-        await enrichMunicipalitiesWithGemini({ limit, concurrency });
+        const websiteOnly = process.env.LLM_MUNICIPALITIES_WEBSITE_ONLY === '1' || process.env.LLM_MUNICIPALITIES_WEBSITE_ONLY === 'true';
+        await enrichMunicipalitiesWithGemini({ limit, concurrency, websiteOnly });
         break;
       }
       case 'pdm-embeddings': {
         const { enrichPDMDocumentsWithEmbeddings } = await import('./enrichments/pdm-embeddings');
         await enrichPDMDocumentsWithEmbeddings();
+        break;
+      }
+      case 'exa-municipalities': {
+        const { enrichMunicipalitiesWithExa } = await import('./llm/municipalities-exa');
+        const limit = process.env.LLM_MUNICIPALITIES_LIMIT ? Number(process.env.LLM_MUNICIPALITIES_LIMIT) : undefined;
+        const concurrency = process.env.LLM_MUNICIPALITIES_CONCURRENCY ? Number(process.env.LLM_MUNICIPALITIES_CONCURRENCY) : undefined;
+        const forceRefresh = process.env.LLM_MUNICIPALITIES_FORCE_REFRESH === '1' || process.env.LLM_MUNICIPALITIES_FORCE_REFRESH === 'true';
+        await enrichMunicipalitiesWithExa({ limit, concurrency, forceRefresh });
         break;
       }
       case 'crus-translate': {

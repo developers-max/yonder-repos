@@ -267,11 +267,16 @@ function validatePDMDocuments(docs?: any, mainWebsite?: string): PDMDocument[] {
     .slice(0, 10); // Limit to 10 documents per municipality
 }
 
-async function updateMunicipality(client: any, id: number, result: LLMMunicipalityResult, municipalityName?: string) {
+interface UpdateMunicipalityOptions {
+  websiteOnly?: boolean;
+}
+
+async function updateMunicipality(client: any, id: number, result: LLMMunicipalityResult, municipalityName?: string, options?: UpdateMunicipalityOptions) {
   const website = result.website_url || null;
   const countryCode = result.country_code || null;
+  const websiteOnly = options?.websiteOnly ?? false;
 
-  if (!website && !countryCode) {
+  if (!website && (websiteOnly || !countryCode)) {
     console.log(`No enrichment data found for municipality ID ${id}`);
     return; // Nothing to update
   }
@@ -285,29 +290,37 @@ async function updateMunicipality(client: any, id: number, result: LLMMunicipali
     values.push(website);
   }
 
-  if (countryCode) {
-    updates.push(`country = $${paramIndex++}`);
-    values.push(countryCode);
+  // Skip country and PDM updates if websiteOnly mode
+  if (!websiteOnly) {
+    if (countryCode) {
+      updates.push(`country = $${paramIndex++}`);
+      values.push(countryCode);
+    }
+
+    // Hardcoded document for Alella
+    if (municipalityName && municipalityName.toLowerCase() === 'alella') {
+      const alellaDocument = {
+        documents: [
+          {
+            id: 'POUM-2014',
+            title: 'Pla d\'Ordenació Urbanística Municipal (POUM) 2014 - Normativa i Agenda',
+            description: 'Official POUM document for Alella municipality approved in 2014',
+            url: 'https://alella.cat/ARXIUS/2010_2015/2014/POUM2014/III_normativa_i_agenda_1de2.pdf',
+            summary: 'Urban planning regulations and agenda for Alella',
+            documentType: 'pdm'
+          }
+        ],
+        lastUpdated: new Date().toISOString()
+      };
+      
+      updates.push(`pdm_documents = $${paramIndex++}::jsonb`);
+      values.push(JSON.stringify(alellaDocument));
+    }
   }
 
-  // Hardcoded document for Alella
-  if (municipalityName && municipalityName.toLowerCase() === 'alella') {
-    const alellaDocument = {
-      documents: [
-        {
-          id: 'POUM-2014',
-          title: 'Pla d\'Ordenació Urbanística Municipal (POUM) 2014 - Normativa i Agenda',
-          description: 'Official POUM document for Alella municipality approved in 2014',
-          url: 'https://alella.cat/ARXIUS/2010_2015/2014/POUM2014/III_normativa_i_agenda_1de2.pdf',
-          summary: 'Urban planning regulations and agenda for Alella',
-          documentType: 'pdm'
-        }
-      ],
-      lastUpdated: new Date().toISOString()
-    };
-    
-    updates.push(`pdm_documents = $${paramIndex++}::jsonb`);
-    values.push(JSON.stringify(alellaDocument));
+  if (updates.length === 0) {
+    console.log(`No updates to apply for municipality ID ${id}`);
+    return;
   }
 
   updates.push(`updated_at = NOW()`);
@@ -339,6 +352,7 @@ export async function enrichMunicipalitiesWithGemini(options?: {
   limit?: number; 
   concurrency?: number;
   municipalityIds?: number[]; // Optional: enrich specific municipalities
+  websiteOnly?: boolean; // If true, only update website field (skip country and PDM docs)
 }) {
   assertEnv();
   const pgPool: Pool = new Pool({ 
@@ -349,6 +363,7 @@ export async function enrichMunicipalitiesWithGemini(options?: {
 
   const limit = options?.limit ?? BATCH_LIMIT;
   const concurrency = options?.concurrency ?? CONCURRENCY;
+  const websiteOnly = options?.websiteOnly ?? false;
 
   const client = await pgPool.connect();
   try {
@@ -381,7 +396,7 @@ export async function enrichMunicipalitiesWithGemini(options?: {
       return;
     }
 
-    console.log(`Enriching ${targets.length} municipalities with Gemini (model=${GEMINI_MODEL}, search=${GEMINI_ENABLE_SEARCH ? 'on' : 'off'})...`);
+    console.log(`Enriching ${targets.length} municipalities with Gemini (model=${GEMINI_MODEL}, search=${GEMINI_ENABLE_SEARCH ? 'on' : 'off'}${websiteOnly ? ', websiteOnly=true' : ''})...`);
 
     let idx = 0;
     let successCount = 0;
@@ -421,9 +436,10 @@ export async function enrichMunicipalitiesWithGemini(options?: {
             );
 
             if (result) {
-              await updateMunicipality(client, municipality.id, result, municipality.name);
-              const docNote = municipality.name.toLowerCase() === 'alella' ? ' | Doc: Hardcoded POUM' : '';
-              console.log(`✓ Enriched: ${municipality.name} | Website: ${result.website_url || 'N/A'} | Country: ${result.country_code || 'N/A'}${docNote}`);
+              await updateMunicipality(client, municipality.id, result, municipality.name, { websiteOnly });
+              const docNote = !websiteOnly && municipality.name.toLowerCase() === 'alella' ? ' | Doc: Hardcoded POUM' : '';
+              const countryNote = websiteOnly ? '' : ` | Country: ${result.country_code || 'N/A'}`;
+              console.log(`✓ Enriched: ${municipality.name} | Website: ${result.website_url || 'N/A'}${countryNote}${docNote}`);
               successCount++;
             } else {
               console.warn(`✗ No data found for: ${municipality.name}`);
