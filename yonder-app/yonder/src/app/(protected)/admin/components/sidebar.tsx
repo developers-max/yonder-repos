@@ -15,7 +15,8 @@ import {
   Building2,
   MapPin,
   Menu,
-  X
+  X,
+  Landmark
 } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useState, useEffect } from 'react';
@@ -62,6 +63,12 @@ const navigation = [
     href: '/admin/plots',
     icon: MapPin,
     description: 'Search and edit plot data'
+  },
+  {
+    name: 'Municipalities',
+    href: '/admin/municipalities',
+    icon: Landmark,
+    description: 'Manage PDM documents'
   },
 ];
 

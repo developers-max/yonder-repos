@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/_components/ui/c
 import { Button } from '@/app/_components/ui/button';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/app/_components/ui/table';
 import Link from 'next/link';
-import { MapPin, Pencil, Check, X, ExternalLink, Search, Map, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { MapPin, Pencil, Check, X, ExternalLink, Search, Map, ChevronDown, ChevronUp, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/app/_components/ui/toast-provider';
 import { CadastralPolygonEditor, type CadastralGeometry } from '@/app/_components/map';
 
@@ -36,6 +36,7 @@ export default function AdminPlotsPage() {
   const [searchedPlotId, setSearchedPlotId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [verifiedPage, setVerifiedPage] = useState(1);
   const [editValues, setEditValues] = useState({
     realLatitude: '',
     realLongitude: '',
@@ -54,6 +55,11 @@ export default function AdminPlotsPage() {
   const { data: plot, isLoading, error } = trpc.realtor.adminGetPlot.useQuery(
     { plotId: searchedPlotId! },
     { enabled: !!searchedPlotId }
+  );
+
+  // Query for verified plots
+  const { data: verifiedPlots, isLoading: isLoadingVerified } = trpc.realtor.adminGetVerifiedPlots.useQuery(
+    { page: verifiedPage, limit: 10 }
   );
 
   // Track toast ID for progress updates
@@ -464,6 +470,125 @@ export default function AdminPlotsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Verified Plots Table */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Check className="w-5 h-5 text-green-600" />
+            Plots with Verified Coordinates
+            {verifiedPlots?.pagination && (
+              <span className="text-sm font-normal text-gray-500">
+                ({verifiedPlots.pagination.totalCount} total)
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoadingVerified ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-gray-600 text-sm">Loading verified plots...</span>
+            </div>
+          ) : verifiedPlots?.items.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 text-sm">
+              No plots with verified coordinates found.
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plot ID</TableHead>
+                    <TableHead>Public Coordinates</TableHead>
+                    <TableHead>Verified Coordinates</TableHead>
+                    <TableHead>Municipality</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Size (m²)</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {verifiedPlots?.items.map((plot) => (
+                    <TableRow key={plot.id}>
+                      <TableCell className="font-mono text-xs text-gray-600 max-w-[200px] truncate" title={plot.id}>
+                        {plot.id.slice(0, 8)}...
+                      </TableCell>
+                      <TableCell className="text-gray-600 text-xs">
+                        {plot.latitude.toFixed(6)}, {plot.longitude.toFixed(6)}
+                      </TableCell>
+                      <TableCell className="text-green-700 text-xs font-medium">
+                        {plot.realLatitude?.toFixed(6)}, {plot.realLongitude?.toFixed(6)}
+                      </TableCell>
+                      <TableCell className="text-gray-700">
+                        <div className="flex items-center gap-1">
+                          <MapPin className="w-4 h-4 text-gray-400" />
+                          {plot.municipality?.name || '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-gray-900">
+                        {plot.price ? `€${Number(plot.price).toLocaleString()}` : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {plot.size ? Number(plot.size).toLocaleString() : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Link
+                            href={`/admin/plots?plotId=${plot.id}`}
+                            className="p-1 text-blue-600 hover:text-blue-700"
+                            title="Edit plot"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Link>
+                          <Link
+                            href={`/plot/${plot.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 text-gray-500 hover:text-gray-700"
+                            title="View public page"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Link>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {verifiedPlots?.pagination && verifiedPlots.pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+                  <div className="text-sm text-gray-500">
+                    Page {verifiedPlots.pagination.page} of {verifiedPlots.pagination.totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setVerifiedPage((p) => Math.max(1, p - 1))}
+                      disabled={verifiedPage === 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setVerifiedPage((p) => Math.min(verifiedPlots.pagination.totalPages, p + 1))}
+                      disabled={verifiedPage >= verifiedPlots.pagination.totalPages}
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
