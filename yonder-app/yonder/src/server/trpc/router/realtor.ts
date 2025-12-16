@@ -1462,4 +1462,75 @@ export const realtorRouter = router({
         },
       };
     }),
+
+  // Admin: Get plots with verified coordinates (realLatitude and realLongitude not null)
+  adminGetVerifiedPlots: protectedProcedure
+    .input(
+      z.object({
+        page: z.number().default(1),
+        limit: z.number().default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { page, limit } = input;
+      const offset = (page - 1) * limit;
+
+      const plotsResult = await db
+        .select({
+          id: enrichedPlotsStage.id,
+          latitude: enrichedPlotsStage.latitude,
+          longitude: enrichedPlotsStage.longitude,
+          price: enrichedPlotsStage.price,
+          size: enrichedPlotsStage.size,
+          realLatitude: enrichedPlotsStage.realLatitude,
+          realLongitude: enrichedPlotsStage.realLongitude,
+          municipalityId: enrichedPlotsStage.municipalityId,
+          municipalityName: municipalities.name,
+          municipalityCountry: municipalities.country,
+        })
+        .from(enrichedPlotsStage)
+        .leftJoin(municipalities, eq(enrichedPlotsStage.municipalityId, municipalities.id))
+        .where(
+          and(
+            sql`${enrichedPlotsStage.realLatitude} IS NOT NULL`,
+            sql`${enrichedPlotsStage.realLongitude} IS NOT NULL`
+          )
+        )
+        .orderBy(desc(enrichedPlotsStage.realLatitude))
+        .limit(limit)
+        .offset(offset);
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(enrichedPlotsStage)
+        .where(
+          and(
+            sql`${enrichedPlotsStage.realLatitude} IS NOT NULL`,
+            sql`${enrichedPlotsStage.realLongitude} IS NOT NULL`
+          )
+        );
+
+      return {
+        items: plotsResult.map((plot) => ({
+          id: plot.id,
+          latitude: plot.latitude,
+          longitude: plot.longitude,
+          price: plot.price,
+          size: plot.size,
+          realLatitude: plot.realLatitude,
+          realLongitude: plot.realLongitude,
+          municipality: plot.municipalityName
+            ? { name: plot.municipalityName, country: plot.municipalityCountry }
+            : null,
+        })),
+        pagination: {
+          page,
+          limit,
+          totalCount: Number(count),
+          totalPages: Math.ceil(Number(count) / limit),
+        },
+      };
+    }),
 });

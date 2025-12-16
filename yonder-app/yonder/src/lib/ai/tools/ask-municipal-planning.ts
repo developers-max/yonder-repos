@@ -1,29 +1,34 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { appRouter } from '@/server/trpc';
 import { ToolResult, ToolErrorCode } from './types';
-import { queryZoningInfo, type ZoningQueryResponse } from '@/lib/utils/remote-clients/yonder-agent-client';
-import { getToolContext } from './tool-context';
+import { queryPdmAnalyzer, type PDMAnalyzerResponse } from '@/lib/utils/remote-clients/yonder-agent-client';
 import { db } from '@/lib/db';
 import { municipalities } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-// Zod schema for validating yonder-agent API responses
-const ZoningResponseSchema = z.object({
+// Zod schema for validating PDM Analyzer API responses
+const PDMAnalyzerResponseSchema = z.object({
   answer: z.string().min(1, 'Answer cannot be empty'),
   municipality: z.string(),
-  sources: z.array(z.object({
-    document_title: z.string(),
-    document_url: z.string().url(),
-    chunk_index: z.number().int().nonnegative(),
-    similarity_score: z.number().min(0).max(1).optional(),
+  municipality_id: z.number(),
+  country: z.string(),
+  query: z.string(),
+  action: z.string(),
+  citations: z.array(z.object({
+    section: z.string().optional(),
+    article: z.string().optional(),
+    text: z.string().optional(),
+    page: z.number().optional(),
+    relevance: z.number().optional(),
   })),
-  question: z.string(),
-  context_chunks_used: z.number().int().nonnegative(),
+  confidence: z.number().min(0).max(1).nullable().optional(),
+  cached: z.boolean(),
   response_time: z.number().positive(),
-  search_method: z.string(),
-  retrieval_calls: z.number().int().nonnegative().nullable().optional(),
-  agent_steps: z.number().int().nonnegative().nullable().optional(),
+  metadata: z.object({
+    output_language: z.string().optional().nullable(),
+    chunks_processed: z.number().optional().nullable(),
+    zone_codes_found: z.array(z.string()).optional().nullable(),
+  }).nullable().optional(),
 });
 
 // Configuration
@@ -110,43 +115,55 @@ export type MunicipalPlanningQAResult = ToolResult<{
 
 /**
  * Tool for asking questions about municipal planning regulations and documents
- * Can use plot context or explicit municipality input
+ * Queries PDM (Plano Diretor Municipal) documents for specific municipalities
  */
 export const askMunicipalPlanningTool = tool({
-  description: `Ask questions about building, zoning, planning regulations, and urban development that apply to speicific plots or municipalities.
-  IMPORTANT: Municipality id is a required field, please always provide it when using this tool.
+  description: `Ask questions about building, zoning, planning regulations, and urban development for a specific municipality.
+  Uses the PDM Analyzer API to query official PDM (Plano Diretor Municipal) documents.
   
-  Use this when users ask about:
-  - Zoning regulations for a specific municipality or location of a municipality.
-  - Building height or density restrictions for a specific municipality or location of a municipality.
-  - Land use permissions and requirements for a specific municipality or location of a municipality.
-  - Construction permits and regulations for a specific municipality or location of a municipality.
-  - Protected areas or heritage restrictions for a specific municipality or location of a municipality.
-  - Specific planning documents (PDM, POUM, etc.)
+  Use this when you need to query the regulation document about:
+  - Specific zone rules and regulations (e.g., "What are the building rules for zone UE1?")
+  - Building height or density restrictions for a zone
+  - Land use permissions and requirements
+  - Construction permits and regulations
+  - Protected areas or heritage restrictions
+  - Zone codes and their meanings
+  - PDM summary or general regulations
   
-  **AUTOMATIC CONTEXT DETECTION**: 
-  - If a plot is in the chat context, the tool automatically extracts and uses its municipality ID
-  - No need to specify plotId or municipalityName when plot context is available
-  - You can override by explicitly providing municipalityName parameter
+  **CRITICAL - QUERY FORMAT**:
+  The query parameter must be a GENERAL QUESTION about zoning/regulations. 
+  ❌ DO NOT include: cadastral references, parcel IDs, plot IDs, coordinates, or property-specific identifiers
+  ✅ DO include: zone codes (e.g., "UE1", "URB"), general regulation questions, building rule inquiries
   
-  Currently supported: Alella (Spain). Other municipalities will return no documents available.`,
+  Good examples:
+  - "What are the building rules for zone UE1?"
+  - "What is the maximum building height in residential zones?"
+  - "Summarize the main PDM regulations for this municipality"
+  - "What land uses are permitted in urban expansion areas?"
   
-  // Note: Using .nullable() instead of .optional() for OpenAI strict schema compatibility
+  Bad examples (DO NOT USE):
+  - "What are the rules for parcel AAA000330134?" ❌
+  - "Tell me about plot 82894e30-f4b7..." ❌
+  
+  **HOW TO GET PARAMETERS**:
+  When a plot is in context, FIRST call getPlotDetails to get the plot information, then use:
+  - municipalityId: Use municipality.databaseId from getPlotDetails response (e.g., if response shows municipality: {databaseId: 54, name: "Faro"}, use municipalityId: 54). WARNING: Do NOT use CAOP/INE codes from enrichmentData - only use the databaseId field!
+  - country: Use municipality.country from getPlotDetails (e.g., 'PT' for Portugal, 'ES' for Spain)
+  - query: A GENERAL question about zoning/regulations (see examples above)
+  
+  Supports Portuguese and Spanish municipalities with processed PDM documents.`,
+  
   parameters: z.object({
-    question: z.string().describe('The question about municipal planning regulations'),
-    municipalityName: z.string().nullable().describe('Municipality name (null if plot context is available)'),
-    plotId: z.string().nullable().describe('Plot ID to get municipality from context (null if not needed)'),
+    municipalityId: z.number().describe('The municipality database ID to query regulations for'),
+    country: z.enum(['PT', 'ES']).describe('Country code: PT for Portugal, ES for Spain'),
+    query: z.string().describe('Specific question about the regulation document (e.g., "What are the rules for zone UE1?", "Maximum building height in residential areas")'),
   }),
   
-  execute: async ({ question, municipalityName, plotId: explicitPlotId }): Promise<MunicipalPlanningQAResult> => {
+  execute: async ({ municipalityId, country, query }): Promise<MunicipalPlanningQAResult> => {
     const startTime = Date.now();
     
-    // Get plotId from context if not explicitly provided
-    const context = getToolContext();
-    const plotId = explicitPlotId || context?.plotId;
-    
     // Input validation and sanitization
-    const sanitizedQuestion = question.trim();
+    const sanitizedQuestion = query.trim();
     if (!sanitizedQuestion || sanitizedQuestion.length === 0) {
       return {
         error: {
@@ -172,106 +189,78 @@ export const askMunicipalPlanningTool = tool({
     }
     
     try {
+      // Map country codes to full names for API
+      const countryCodeToName: Record<string, string> = {
+        'PT': 'Portugal',
+        'ES': 'Spain',
+      };
+      const resolvedCountry = countryCodeToName[country] || 'Portugal';
+
       console.log('[askMunicipalPlanning] Starting query:', {
         questionLength: sanitizedQuestion.length,
-        municipalityName,
-        plotId,
-        plotIdSource: explicitPlotId ? 'explicit' : (context?.plotId ? 'context' : 'none'),
+        municipalityId,
+        country,
+        resolvedCountry,
         timestamp: new Date().toISOString(),
       });
-      // Create a tRPC caller
-      const caller = appRouter.createCaller({
-        session: null,
-        user: undefined,
+
+      // Lookup municipality by ID to get name
+      const municipality = await db.query.municipalities.findFirst({
+        where: eq(municipalities.id, municipalityId),
       });
 
-      let municipalityId: number | null = null;
-      let resolvedMunicipalityName: string | null = null;
-
-      // Strategy 1: If plotId is provided, get municipality from plot
-      if (plotId) {
-        try {
-          const plot = await caller.plots.getPlot({ id: plotId });
-          if (plot.municipality?.id) {
-            municipalityId = plot.municipality.id;
-            resolvedMunicipalityName = plot.municipality.name;
-          }
-        } catch (error) {
-          console.warn('Failed to get municipality from plot:', error);
-        }
-      }
-
-      // Strategy 2: If municipality name is provided, lookup in database
-      if (!municipalityId && municipalityName) {
-        try {
-          console.log('[askMunicipalPlanning] Looking up municipality by name:', municipalityName);
-          const municipality = await db.query.municipalities.findFirst({
-            where: eq(municipalities.name, municipalityName),
-          });
-          
-          if (municipality) {
-            municipalityId = municipality.id;
-            resolvedMunicipalityName = municipality.name;
-            console.log('[askMunicipalPlanning] Municipality found:', { id: municipalityId, name: resolvedMunicipalityName });
-          } else {
-            console.warn('[askMunicipalPlanning] Municipality not found in database:', municipalityName);
-            resolvedMunicipalityName = municipalityName;
-          }
-        } catch (error) {
-          console.error('[askMunicipalPlanning] Failed to lookup municipality:', error);
-          resolvedMunicipalityName = municipalityName;
-        }
-      }
-
-      // If we still don't have a municipality, return error
-      if (!municipalityId || !resolvedMunicipalityName) {
+      if (!municipality) {
         return {
           error: {
             code: ToolErrorCode.INVALID_PARAMETERS,
-            details: municipalityName 
-              ? `Municipality "${municipalityName}" not found or does not have planning documents available.`
-              : 'No municipality context available. Please specify a municipality name or provide a plot ID.',
+            details: `Municipality with ID ${municipalityId} not found.`,
           },
           suggestions: [
+            { id: 'check_municipality_id', action: 'Verify the municipality ID is correct' },
             { id: 'list_municipalities', action: 'List available municipalities with planning documents' },
-            { id: 'provide_municipality', action: 'Specify municipality name explicitly' },
-            { id: 'use_plot_context', action: 'Ask about a specific plot to get municipality context' },
           ],
         };
       }
 
-      // Query the yonder-agent API with timeout and retry logic
-      let ragResult: ZoningQueryResponse;
+      const resolvedMunicipalityName = municipality.name;
+
+      // Query the PDM Analyzer API with timeout and retry logic
+      let pdmResult: PDMAnalyzerResponse;
       try {
-        console.log('[askMunicipalPlanning] Querying yonder-agent API:', {
+        console.log('[askMunicipalPlanning] Querying PDM Analyzer API:', {
           municipality_id: municipalityId,
+          municipality_name: resolvedMunicipalityName,
+          country: resolvedCountry,
           questionPreview: sanitizedQuestion.substring(0, 50),
         });
         
-        ragResult = await retryWithBackoff(async () => {
+        pdmResult = await retryWithBackoff(async () => {
           return await withTimeout(
-            queryZoningInfo({
+            queryPdmAnalyzer({
               query: sanitizedQuestion,
               municipality_id: municipalityId,
-              plot_id: plotId,
+              municipality: resolvedMunicipalityName || undefined,
+              country: resolvedCountry,
+              action: 'query',
+              output_language: 'auto',
             }),
             API_TIMEOUT_MS
           );
         });
         
         // Validate response schema
-        const validationResult = ZoningResponseSchema.safeParse(ragResult);
+        const validationResult = PDMAnalyzerResponseSchema.safeParse(pdmResult);
         if (!validationResult.success) {
           console.error('[askMunicipalPlanning] Invalid API response:', validationResult.error);
           throw new Error(`Invalid API response format: ${validationResult.error.message}`);
         }
         
         console.log('[askMunicipalPlanning] Query successful:', {
-          sourcesCount: ragResult.sources.length,
-          searchMethod: ragResult.search_method,
-          responseTime: ragResult.response_time,
-          retrievalCalls: ragResult.retrieval_calls,
-          agentSteps: ragResult.agent_steps,
+          citationsCount: pdmResult.citations.length,
+          action: pdmResult.action,
+          responseTime: pdmResult.response_time,
+          cached: pdmResult.cached,
+          confidence: pdmResult.confidence,
         });
         
       } catch (error) {
@@ -309,28 +298,30 @@ export const askMunicipalPlanningTool = tool({
       // Build successful response with validated data
       const totalElapsedMs = Date.now() - startTime;
       
-      const agenticInfo = ragResult.retrieval_calls && ragResult.agent_steps
-        ? ` The AI agent made ${ragResult.retrieval_calls} retrieval call(s) across ${ragResult.agent_steps} reasoning step(s).`
+      const confidenceInfo = pdmResult.confidence != null
+        ? ` Confidence: ${(pdmResult.confidence * 100).toFixed(0)}%.`
         : '';
+      
+      const cachedInfo = pdmResult.cached ? ' (cached)' : '';
       
       const result: MunicipalPlanningQAResult = {
         data: {
-          municipalityId,
-          municipalityName: ragResult.municipality || resolvedMunicipalityName,
-          question: ragResult.question,
-          answer: ragResult.answer,
-          sources: ragResult.sources.map((source, idx) => ({
-            id: `${municipalityId}-${source.chunk_index}-${idx}`,
-            documentTitle: source.document_title,
-            documentId: source.document_url,
-            documentUrl: source.document_url,
-            chunkIndex: source.chunk_index,
-            similarity: source.similarity_score ?? 0,
-            preview: '',  // yonder-agent doesn't return chunk text in query response
+          municipalityId: pdmResult.municipality_id,
+          municipalityName: pdmResult.municipality || resolvedMunicipalityName,
+          question: pdmResult.query,
+          answer: pdmResult.answer,
+          sources: pdmResult.citations.map((citation, idx) => ({
+            id: `${pdmResult.municipality_id}-citation-${idx}`,
+            documentTitle: citation.section || citation.article || 'PDM Document',
+            documentId: `${pdmResult.municipality_id}-${idx}`,
+            documentUrl: '',
+            chunkIndex: citation.page || idx,
+            similarity: citation.relevance ?? 0,
+            preview: citation.text || '',
           })),
           metadata: {
-            assistantMessage: `Retrieved official planning information for ${ragResult.municipality} using Agentic RAG v2.0. Answer based on ${ragResult.sources.length} relevant document section(s). API response: ${ragResult.response_time.toFixed(2)}s, total: ${(totalElapsedMs / 1000).toFixed(2)}s.${agenticInfo}`,
-            hasDocuments: ragResult.sources.length > 0,
+            assistantMessage: `Retrieved official PDM planning information for ${pdmResult.municipality} (${pdmResult.country}). Answer based on ${pdmResult.citations.length} citation(s). API response: ${pdmResult.response_time.toFixed(2)}s${cachedInfo}, total: ${(totalElapsedMs / 1000).toFixed(2)}s.${confidenceInfo}`,
+            hasDocuments: pdmResult.citations.length > 0,
           },
         },
         suggestions: [
@@ -343,7 +334,7 @@ export const askMunicipalPlanningTool = tool({
       
       console.log('[askMunicipalPlanning] Query completed successfully:', {
         totalElapsedMs,
-        sourcesReturned: ragResult.sources.length,
+        citationsReturned: pdmResult.citations.length,
       });
 
       return result;
@@ -355,8 +346,7 @@ export const askMunicipalPlanningTool = tool({
       console.error('[askMunicipalPlanning] Unexpected error:', {
         error: errorMessage,
         stack: errorStack,
-        municipalityName,
-        plotId,
+        municipalityId,
         elapsedMs: Date.now() - startTime,
       });
       

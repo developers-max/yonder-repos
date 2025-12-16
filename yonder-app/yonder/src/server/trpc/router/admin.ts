@@ -860,4 +860,257 @@ export const adminRouter = router({
         },
       };
     }),
+
+  // ==================== MUNICIPALITY ADMIN ====================
+
+  // Get all municipalities with filtering
+  getMunicipalities: protectedProcedure
+    .input(
+      z.object({
+        page: z.number().default(1),
+        limit: z.number().default(20),
+        search: z.string().optional(),
+        country: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { page, limit, search, country } = input;
+      const offset = (page - 1) * limit;
+
+      // Build conditions
+      const conditions = [];
+      if (search) {
+        // Check if search is a number (ID search)
+        const searchAsNumber = parseInt(search, 10);
+        if (!isNaN(searchAsNumber)) {
+          conditions.push(
+            sql`(${municipalities.id} = ${searchAsNumber} OR ${municipalities.name} ILIKE '%' || ${search} || '%' OR ${municipalities.district} ILIKE '%' || ${search} || '%')`
+          );
+        } else {
+          conditions.push(
+            sql`(${municipalities.name} ILIKE '%' || ${search} || '%' OR ${municipalities.district} ILIKE '%' || ${search} || '%')`
+          );
+        }
+      }
+      if (country) {
+        conditions.push(eq(municipalities.country, country));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      // Get total count
+      const [{ count: totalCount }] = await db
+        .select({ count: sql`count(*)`.as("count") })
+        .from(municipalities)
+        .where(whereClause);
+
+      // Get municipalities
+      const items = await db
+        .select({
+          id: municipalities.id,
+          name: municipalities.name,
+          district: municipalities.district,
+          country: municipalities.country,
+          website: municipalities.website,
+          pdmDocuments: municipalities.pdmDocuments,
+          createdAt: municipalities.createdAt,
+          updatedAt: municipalities.updatedAt,
+        })
+        .from(municipalities)
+        .where(whereClause)
+        .orderBy(municipalities.name)
+        .limit(limit)
+        .offset(offset);
+
+      const totalPages = Math.ceil(Number(totalCount) / limit);
+
+      return {
+        municipalities: items,
+        pagination: {
+          page,
+          limit,
+          totalCount: Number(totalCount),
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      };
+    }),
+
+  // Get distinct countries for filtering
+  getMunicipalityCountries: protectedProcedure.query(async ({ ctx }) => {
+    await requireAdmin(ctx.user.id);
+
+    const countries = await db
+      .selectDistinct({ country: municipalities.country })
+      .from(municipalities)
+      .where(sql`${municipalities.country} IS NOT NULL`)
+      .orderBy(municipalities.country);
+
+    return countries.map((c) => c.country).filter(Boolean) as string[];
+  }),
+
+  // Update municipality PDM document
+  updateMunicipalityPdm: protectedProcedure
+    .input(
+      z.object({
+        municipalityId: z.number(),
+        pdmDocument: z.object({
+          title: z.string().min(1),
+          url: z.string().url(),
+          description: z.string().optional(),
+          documentType: z.enum(["pdm", "regulamento", "plano_pormenor"]).default("pdm"),
+        }),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { municipalityId, pdmDocument } = input;
+
+      // Get current municipality
+      const [current] = await db
+        .select()
+        .from(municipalities)
+        .where(eq(municipalities.id, municipalityId))
+        .limit(1);
+
+      if (!current) {
+        throw new Error("Municipality not found");
+      }
+
+      // Create new PDM documents structure
+      const newDoc = {
+        id: `doc-${Date.now()}`,
+        title: pdmDocument.title,
+        url: pdmDocument.url,
+        description: pdmDocument.description || "",
+        summary: "",
+        documentType: pdmDocument.documentType,
+      };
+
+      const existingDocs = current.pdmDocuments?.documents || [];
+      const updatedPdmDocuments = {
+        documents: [...existingDocs, newDoc],
+        lastUpdated: new Date().toISOString(),
+      };
+
+      // Update municipality
+      await db
+        .update(municipalities)
+        .set({
+          pdmDocuments: updatedPdmDocuments,
+          updatedAt: new Date(),
+        })
+        .where(eq(municipalities.id, municipalityId));
+
+      return { success: true, documentId: newDoc.id };
+    }),
+
+  // Remove a PDM document from municipality
+  removeMunicipalityPdmDocument: protectedProcedure
+    .input(
+      z.object({
+        municipalityId: z.number(),
+        documentId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { municipalityId, documentId } = input;
+
+      // Get current municipality
+      const [current] = await db
+        .select()
+        .from(municipalities)
+        .where(eq(municipalities.id, municipalityId))
+        .limit(1);
+
+      if (!current) {
+        throw new Error("Municipality not found");
+      }
+
+      const existingDocs = current.pdmDocuments?.documents || [];
+      const updatedDocs = existingDocs.filter((doc) => doc.id !== documentId);
+
+      const updatedPdmDocuments = {
+        documents: updatedDocs,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      // Update municipality
+      await db
+        .update(municipalities)
+        .set({
+          pdmDocuments: updatedPdmDocuments,
+          updatedAt: new Date(),
+        })
+        .where(eq(municipalities.id, municipalityId));
+
+      return { success: true };
+    }),
+
+  // Update municipality website
+  updateMunicipalityWebsite: protectedProcedure
+    .input(
+      z.object({
+        municipalityId: z.number(),
+        website: z.string().url().nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      await db
+        .update(municipalities)
+        .set({
+          website: input.website,
+          updatedAt: new Date(),
+        })
+        .where(eq(municipalities.id, input.municipalityId));
+
+      return { success: true };
+    }),
+
+  // Process PDM document for RAG/LLM integration
+  processPdmDocument: protectedProcedure
+    .input(
+      z.object({
+        municipalityId: z.number(),
+        pdmUrl: z.string().url(),
+        forceRefresh: z.boolean().default(false),
+        generateEmbeddings: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { processPdmDocument } = await import('../../../lib/utils/remote-clients/yonder-agent-client');
+      
+      try {
+        const result = await processPdmDocument({
+          pdm_url: input.pdmUrl,
+          municipality_id: input.municipalityId,
+          force_refresh: input.forceRefresh,
+          generate_embeddings: input.generateEmbeddings,
+        });
+        
+        return {
+          success: true,
+          status: result.status,
+          municipalityName: result.municipality_name,
+          pdmDocumentsUpdated: result.pdm_documents_updated,
+          jsonConversion: result.json_conversion,
+          embeddingsGeneration: result.embeddings_generation,
+          processingTime: result.processing_time,
+          readyForQueries: result.ready_for_queries,
+        };
+      } catch (error) {
+        console.error('Error processing PDM document:', error);
+        throw new Error(`Failed to process PDM document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }),
 });

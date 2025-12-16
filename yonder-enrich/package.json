@@ -51,7 +51,6 @@
   "license": "ISC",
   "description": "Plot enrichment service using OpenStreetMap data",
   "dependencies": {
-    "@yonder/persistence": "workspace:*",
     "@google/generative-ai": "^0.21.0",
     "@turf/boolean-intersects": "^7.3.1",
     "@turf/boolean-point-in-polygon": "^7.2.0",
@@ -59,8 +58,10 @@
     "@types/node": "^22.15.12",
     "@types/proj4": "^2.5.6",
     "@types/xml2js": "^0.4.14",
+    "@yonder/persistence": "workspace:*",
     "axios": "^1.12.2",
     "dotenv": "^16.5.0",
+    "exa-js": "^2.0.11",
     "express": "^4.21.2",
     "geolib": "^3.3.4",
     "minimist": "^1.2.8",

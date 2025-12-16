@@ -19,6 +19,11 @@ export type PlotDetailsResult = ToolResult<{
     images: string[];
     enrichmentData: EnrichmentData | null;
   };
+  municipality: {
+    databaseId: number;
+    name: string;
+    country: 'PT' | 'ES' | string;
+  } | null;
   zoning: {
     label: string | null;
     labelEn: string | null;
@@ -71,6 +76,13 @@ export const getPlotDetailsTool = tool({
       
       // Fetch plot details from database
       const plot = await caller.plots.getPlot({ id: plotId });
+      
+      // Extract municipality info (IMPORTANT: this is the internal database ID, NOT the CAOP/INE code)
+      const municipalityInfo = plot.municipality ? {
+        databaseId: plot.municipality.id,
+        name: plot.municipality.name,
+        country: (plot.municipality as { country?: string }).country || 'PT',
+      } : null;
       
       // Create plot data object
       const plotData = {
@@ -128,12 +140,17 @@ export const getPlotDetailsTool = tool({
         assistantMessage += ` Zoning: ${zoning.label || zoning.labelEn || zoning.typename || 'Available'}`;
       }
       
+      if (municipalityInfo) {
+        assistantMessage += ` Municipality: ${municipalityInfo.name} (database ID: ${municipalityInfo.databaseId}, country: ${municipalityInfo.country}).`;
+      }
+      
       assistantMessage += ' You can analyze pricing, discuss location/amenities, zoning regulations, cadastral details, or guide through next steps.';
       
       const result: PlotDetailsResult = {
         data: {
           plotId,
           plot: plotData,
+          municipality: municipalityInfo,
           zoning,
           cadastral,
           analysis: {
