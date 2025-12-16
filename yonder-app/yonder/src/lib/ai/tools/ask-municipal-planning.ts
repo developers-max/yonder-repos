@@ -128,12 +128,28 @@ export const askMunicipalPlanningTool = tool({
   - Construction permits and regulations
   - Protected areas or heritage restrictions
   - Zone codes and their meanings
+  - PDM summary or general regulations
   
-  **IMPORTANT - HOW TO GET PARAMETERS**:
+  **CRITICAL - QUERY FORMAT**:
+  The query parameter must be a GENERAL QUESTION about zoning/regulations. 
+  ❌ DO NOT include: cadastral references, parcel IDs, plot IDs, coordinates, or property-specific identifiers
+  ✅ DO include: zone codes (e.g., "UE1", "URB"), general regulation questions, building rule inquiries
+  
+  Good examples:
+  - "What are the building rules for zone UE1?"
+  - "What is the maximum building height in residential zones?"
+  - "Summarize the main PDM regulations for this municipality"
+  - "What land uses are permitted in urban expansion areas?"
+  
+  Bad examples (DO NOT USE):
+  - "What are the rules for parcel AAA000330134?" ❌
+  - "Tell me about plot 82894e30-f4b7..." ❌
+  
+  **HOW TO GET PARAMETERS**:
   When a plot is in context, FIRST call getPlotDetails to get the plot information, then use:
   - municipalityId: Use municipality.databaseId from getPlotDetails response (e.g., if response shows municipality: {databaseId: 54, name: "Faro"}, use municipalityId: 54). WARNING: Do NOT use CAOP/INE codes from enrichmentData - only use the databaseId field!
   - country: Use municipality.country from getPlotDetails (e.g., 'PT' for Portugal, 'ES' for Spain)
-  - query: A specific question about the regulation document (e.g., "What are the construction rules for zone UE1?")
+  - query: A GENERAL question about zoning/regulations (see examples above)
   
   Supports Portuguese and Spanish municipalities with processed PDM documents.`,
   
