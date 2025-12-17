@@ -309,7 +309,7 @@ export default function ChatInterface({
                   <p className="text-xs opacity-75">Start fresh conversation</p>
                 </TooltipContent>
               </Tooltip>
-              {session?.user?.role === 'realtor' && (
+              {(session?.user?.role === 'realtor' || session?.user?.role === 'admin') && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -408,7 +408,7 @@ export default function ChatInterface({
               </TooltipContent>
             </Tooltip>
             {/* Role-specific buttons */}
-            {session?.user?.role === 'realtor' && (
+            {(session?.user?.role === 'realtor' || session?.user?.role === 'admin') && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

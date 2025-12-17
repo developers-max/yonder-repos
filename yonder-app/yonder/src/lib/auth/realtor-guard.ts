@@ -20,8 +20,8 @@ export async function requireRealtor() {
     .where(eq(usersTable.id, session.user.id))
     .limit(1);
 
-  if (!user || user.role !== "realtor") {
-    // Redirect non-realtor users to chat
+  if (!user || (user.role !== "realtor" && user.role !== "admin")) {
+    // Redirect non-realtor/non-admin users to chat
     redirect("/chat");
   }
 
