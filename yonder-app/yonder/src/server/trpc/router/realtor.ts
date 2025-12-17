@@ -27,8 +27,8 @@ async function requireRealtor(userId: string) {
     .where(eq(usersTable.id, userId))
     .limit(1);
 
-  if (!user[0] || user[0].role !== 'realtor') {
-    throw new Error('Realtor access required');
+  if (!user[0] || (user[0].role !== 'realtor' && user[0].role !== 'admin')) {
+    throw new Error('Realtor or admin access required');
   }
 }
 

@@ -340,8 +340,8 @@ export default function PlotDetails({
           {/* Plot Information - only show for overview or standalone */}
           {(standalone || activeTab === "overview") && (
             <>
-              {/* Unverified Plot Banner - Only visible to realtors for unclaimed plots */}
-              {isRealtor && !strongPlot.claimedByUserId && (
+              {/* Unverified Plot Banner - Visible to realtors and admins for unclaimed plots */}
+              {(isRealtor || isAdmin) && !strongPlot.claimedByUserId && (
                 <UnverifiedPlotBanner plotId={plotId} />
               )}
 
