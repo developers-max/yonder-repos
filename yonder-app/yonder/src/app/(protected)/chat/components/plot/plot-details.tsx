@@ -340,9 +340,12 @@ export default function PlotDetails({
           {/* Plot Information - only show for overview or standalone */}
           {(standalone || activeTab === "overview") && (
             <>
-              {/* Unverified Plot Banner - Visible to realtors and admins for unclaimed plots */}
-              {(isRealtor || isAdmin) && !strongPlot.claimedByUserId && (
-                <UnverifiedPlotBanner plotId={plotId} />
+              {/* Plot Verification Banner - Visible to realtors and admins */}
+              {(isRealtor || isAdmin) && (
+                <UnverifiedPlotBanner 
+                  plotId={plotId} 
+                  isVerified={strongPlot.realLatitude != null && strongPlot.realLongitude != null}
+                />
               )}
 
               {/* Listing Card - Idealista Style */}
