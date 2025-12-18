@@ -248,11 +248,12 @@ export default function CadastralPolygonEditor({
   }, []);
 
   // Sync marker position when center prop changes (e.g., when editing is cancelled)
+  // Only sync when not in marker editing mode to allow user to drag freely
   useEffect(() => {
-    if (!isDraggingMarker) {
+    if (!isMarkerEditing) {
       setMarkerPosition(center);
     }
-  }, [center.latitude, center.longitude, isDraggingMarker]);
+  }, [center.latitude, center.longitude, isMarkerEditing]);
 
   // Calculate area when geometry changes
   const displayGeometry = isEditing ? editingGeometry : currentGeometry;
