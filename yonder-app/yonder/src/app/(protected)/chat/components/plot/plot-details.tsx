@@ -345,6 +345,7 @@ export default function PlotDetails({
                 <UnverifiedPlotBanner 
                   plotId={plotId} 
                   isVerified={strongPlot.realLatitude != null && strongPlot.realLongitude != null}
+                  isClaimed={strongPlot.claimedByUserId != null}
                 />
               )}
 

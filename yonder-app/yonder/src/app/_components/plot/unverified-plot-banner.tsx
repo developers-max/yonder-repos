@@ -8,6 +8,7 @@ import { Button } from '@/app/_components/ui/button';
 interface UnverifiedPlotBannerProps {
   plotId: string;
   isVerified?: boolean;
+  isClaimed?: boolean;
   onVerify?: () => void;
 }
 
@@ -15,7 +16,7 @@ interface UnverifiedPlotBannerProps {
  * Banner shown on plots that don't have verified coordinates.
  * Only visible to users with realtor role.
  */
-export function UnverifiedPlotBanner({ plotId, isVerified = false, onVerify }: UnverifiedPlotBannerProps) {
+export function UnverifiedPlotBanner({ plotId, isVerified = false, isClaimed = false, onVerify }: UnverifiedPlotBannerProps) {
   const [showModal, setShowModal] = useState(false);
   const router = useRouter();
 
@@ -32,17 +33,74 @@ export function UnverifiedPlotBanner({ plotId, isVerified = false, onVerify }: U
   // Verified plot banner
   if (isVerified) {
     return (
-      <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-            <CheckCircle className="w-5 h-5 text-green-600" />
+      <>
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-semibold text-green-700">Verified Plot</span>
+              <span className="text-green-600 text-sm">Confirmed Location</span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="font-semibold text-green-700">Verified Plot</span>
-            <span className="text-green-600 text-sm">Confirmed Location</span>
-          </div>
+          {!isClaimed && (
+            <Button
+              onClick={handleClaimClick}
+              variant="outline"
+              size="sm"
+              className="border-green-300 text-green-700 hover:bg-green-100 hover:text-green-800 flex-shrink-0"
+            >
+              Claim this plot
+            </Button>
+          )}
         </div>
-      </div>
+
+        {/* Claim Modal */}
+        {showModal && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setShowModal(false)}
+          >
+            <div 
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="relative p-6 pb-4">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+                
+                <h2 className="text-xl font-bold text-gray-900 pr-8">
+                  Are you the seller of this plot?
+                </h2>
+                <p className="text-gray-600 mt-2">
+                  Help buyers make faster decisions with verified data.
+                </p>
+              </div>
+
+              <div className="px-6 pb-6 flex gap-3">
+                <Button
+                  onClick={handleVerifyPlot}
+                  className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+                >
+                  Claim my plot
+                </Button>
+                <Button
+                  onClick={() => setShowModal(false)}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
