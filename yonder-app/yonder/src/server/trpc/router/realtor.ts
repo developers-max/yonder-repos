@@ -208,74 +208,10 @@ export const realtorRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Any user with realtor or admin role can update plot locations
       await requireRealtor(ctx.user.id);
 
       const { plotId, realLatitude, realLongitude, realAddress } = input;
-
-      // Verify the realtor has access to this plot
-      const [user] = await db
-        .select({ email: usersTable.email })
-        .from(usersTable)
-        .where(eq(usersTable.id, ctx.user.id))
-        .limit(1);
-
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      // Check if realtor is authorized to update this plot
-      // Authorized if: 1) assigned via organization_plots OR 2) their company is the agency/source
-      const email = String(user.email || '').toLowerCase();
-      const domain = email.includes('@') ? email.split('@')[1] : '';
-      
-      if (!domain) {
-        throw new Error('Invalid email domain');
-      }
-
-      // Check 1: Is realtor assigned to this plot via organization_plots?
-      let isAssigned = false;
-      try {
-        const existsRes = await db.execute(
-          sql`SELECT 1 FROM realtors WHERE (website_url ILIKE ${'%' + domain + '%'} OR email ILIKE ${'%' + '@' + domain}) LIMIT 1`
-        );
-        const domainAuthorized = hasRowsResult(existsRes) && existsRes.rows.length > 0;
-        
-        if (domainAuthorized) {
-          const assignedPlot = await db.execute(
-            sql`SELECT 1 FROM organization_plots WHERE plot_id = ${plotId} AND realtor_email ILIKE ${'%@' + domain} LIMIT 1`
-          );
-          isAssigned = hasRowsResult(assignedPlot) && assignedPlot.rows.length > 0;
-        } else {
-          const assignedPlot = await db
-            .select({ id: organizationPlotsTable.id })
-            .from(organizationPlotsTable)
-            .where(and(eq(organizationPlotsTable.plotId, plotId), eq(organizationPlotsTable.realtorEmail, user.email)))
-            .limit(1);
-          isAssigned = !!assignedPlot[0];
-        }
-      } catch {
-        isAssigned = false;
-      }
-
-      // Check 2: Is realtor's company the agency/source for this plot?
-      let isCompanyPlot = false;
-      try {
-        const companyPlot = await db.execute(
-          sql`SELECT 1 FROM plots_stage_realtors psr
-              JOIN realtors r ON r.id = psr.realtor_id
-              WHERE psr.plot_id = ${plotId}
-                AND psr.role IN ('agency', 'source')
-                AND (r.website_url ILIKE ${'%' + domain + '%'} OR r.email ILIKE ${'%@' + domain})
-              LIMIT 1`
-        );
-        isCompanyPlot = hasRowsResult(companyPlot) && companyPlot.rows.length > 0;
-      } catch {
-        isCompanyPlot = false;
-      }
-
-      if (!isAssigned && !isCompanyPlot) {
-        throw new Error('You do not have access to update this plot');
-      }
 
       // Build update object for realtor-provided accurate location data
       const updates: Record<string, unknown> = {};
