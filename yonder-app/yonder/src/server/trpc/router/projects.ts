@@ -888,12 +888,15 @@ export const projectsRouter = router({
         );
       }
 
-      // Fetch plot records
+      // Fetch plot records (including claimed info)
       const plots = await db
         .select({
           id: enrichedPlots.id,
           price: enrichedPlots.price,
           size: enrichedPlots.size,
+          claimedByEmail: enrichedPlots.claimedByEmail,
+          claimedByName: enrichedPlots.claimedByName,
+          claimedByUserId: enrichedPlots.claimedByUserId,
         })
         .from(enrichedPlots)
         .where(inArray(enrichedPlots.id, input.plotIds));
@@ -952,6 +955,9 @@ export const projectsRouter = router({
         suggestedRealtors?: Array<{ email: string | null; name: string; company: string; role: string }>; 
         sent: boolean;
         error?: string;
+        isClaimed: boolean;
+        claimedByEmail: string | null;
+        claimedByName: string | null;
       }> = [];
 
       for (const plot of plots) {
@@ -1075,6 +1081,9 @@ export const projectsRouter = router({
           suggestedRealtors: suggestions,
           sent,
           ...(error ? { error } : {}),
+          isClaimed: !!plot.claimedByUserId,
+          claimedByEmail: plot.claimedByEmail,
+          claimedByName: plot.claimedByName,
         });
       }
 
@@ -1088,6 +1097,93 @@ export const projectsRouter = router({
         results,
       };
     }),
+
+  // Send direct email to claimed plot realtor via Resend
+  sendDirectEmail: protectedProcedure
+    .input(z.object({
+      organizationId: z.string(),
+      plotId: z.string().uuid(),
+      to: z.string().email(),
+      toName: z.string().optional(),
+      subject: z.string().min(1),
+      body: z.string().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify user is a member of the organization
+      const [membership] = await db
+        .select()
+        .from(membersTable)
+        .where(and(
+          eq(membersTable.userId, ctx.user.id),
+          eq(membersTable.organizationId, input.organizationId)
+        ))
+        .limit(1);
+
+      if (!membership) {
+        throw new Error('You are not a member of this organization');
+      }
+
+      // Verify the plot exists and is claimed
+      const [plot] = await db
+        .select({
+          id: enrichedPlots.id,
+          claimedByEmail: enrichedPlots.claimedByEmail,
+          claimedByUserId: enrichedPlots.claimedByUserId,
+        })
+        .from(enrichedPlots)
+        .where(eq(enrichedPlots.id, input.plotId))
+        .limit(1);
+
+      if (!plot) {
+        throw new Error('Plot not found');
+      }
+
+      if (!plot.claimedByUserId) {
+        throw new Error('Plot is not claimed - use SmartLead for unclaimed plots');
+      }
+
+      // Import sendEmail from email library
+      const { sendEmail } = await import('@/lib/email');
+
+      // Convert plain text body to HTML
+      const htmlBody = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        ${input.body
+          .split('\n')
+          .map(line => line.trim())
+          .map(line => line ? `<p style="color: #374151; font-size: 16px; line-height: 24px; margin: 0 0 16px 0;">${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>` : '<br/>')
+          .join('')}
+      </div>`;
+
+      const result = await sendEmail({
+        to: input.to,
+        subject: input.subject,
+        html: htmlBody,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to send email');
+      }
+
+      // Update organization plot status to outreach_sent
+      await db
+        .update(organizationPlotsTable)
+        .set({
+          realtorEmail: input.to,
+          realtorName: input.toName || null,
+          status: 'outreach_sent',
+        })
+        .where(and(
+          eq(organizationPlotsTable.organizationId, input.organizationId),
+          eq(organizationPlotsTable.plotId, input.plotId)
+        ));
+
+      return {
+        success: true,
+        emailId: result.id,
+        plotId: input.plotId,
+      };
+    }),
+
   // PDM Request procedures (for regular users)
   createPdmRequest: protectedProcedure
     .input(

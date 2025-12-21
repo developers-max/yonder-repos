@@ -4,7 +4,7 @@ import { useChat } from '@ai-sdk/react';
 import type { Message } from 'ai';
 import { Button } from '@/app/_components/ui/button';
 import { Textarea } from '@/app/_components/ui/textarea';
-import { Bot, BrushCleaning, Loader2, Building2, Settings } from 'lucide-react';
+import { Bot, BrushCleaning, Loader2, Building2, Settings, ChevronDown } from 'lucide-react';
 import { ToolInvocationSkeleton } from '../tool-results/plot/plot-search-components';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { trpc } from '@/trpc/client';
@@ -19,6 +19,12 @@ import ProjectSelector from '../project/project-selector';
 import StepIndicator from '../project/step-indicator';
 import UserDropdown from './user-dropdown';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/app/_components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/app/_components/ui/dropdown-menu';
 import { createNewChat, getUrlWithParams } from '../../utils/chat-utils';
 
 // Dynamically import ChatHistoryPopover with SSR disabled to avoid hydration issues
@@ -309,43 +315,39 @@ export default function ChatInterface({
                   <p className="text-xs opacity-75">Start fresh conversation</p>
                 </TooltipContent>
               </Tooltip>
+              {/* Admin/Realtor Panel Dropdown - only show for realtor or admin roles */}
               {(session?.user?.role === 'realtor' || session?.user?.role === 'admin') && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <Button
-                      onClick={() => window.open('/realtor', '_blank', 'noopener,noreferrer')}
                       variant="outline"
                       size="sm"
-                      className="flex items-center gap-2 h-9 px-3"
-                    >
-                      <Building2 className="w-4 h-4" />
-                      <span className="text-sm">Realtor Panel</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Open Realtor Panel</p>
-                    <p className="text-xs opacity-75">Manage assigned plots</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {session?.user?.role === 'admin' && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={() => window.open('/admin', '_blank', 'noopener,noreferrer')}
-                      variant="outline"
-                      size="sm"
-                      className="flex items-center gap-2 h-9 px-3"
+                      className="flex items-center gap-1.5 h-9 px-3"
                     >
                       <Settings className="w-4 h-4" />
-                      <span className="text-sm">Admin Panel</span>
+                      <span className="text-sm hidden sm:inline">Panels</span>
+                      <ChevronDown className="w-3 h-3" />
                     </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Open Admin Panel</p>
-                    <p className="text-xs opacity-75">System administration</p>
-                  </TooltipContent>
-                </Tooltip>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem
+                      onClick={() => window.open('/realtor', '_blank', 'noopener,noreferrer')}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
+                      <Building2 className="w-4 h-4" />
+                      <span>Realtor Panel</span>
+                    </DropdownMenuItem>
+                    {session?.user?.role === 'admin' && (
+                      <DropdownMenuItem
+                        onClick={() => window.open('/admin', '_blank', 'noopener,noreferrer')}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span>Admin Panel</span>
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               <UserDropdown disabled={isCreatingChat} />
             </div>
@@ -409,42 +411,37 @@ export default function ChatInterface({
             </Tooltip>
             {/* Role-specific buttons */}
             {(session?.user?.role === 'realtor' || session?.user?.role === 'admin') && (
-              <Tooltip>
-                <TooltipTrigger asChild>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
-                    onClick={() => window.open('/realtor', '_blank', 'noopener,noreferrer')}
                     variant="outline"
                     size="sm"
-                    className="flex items-center gap-2 h-9 px-3"
-                  >
-                    <Building2 className="w-4 h-4" />
-                    <span className="text-sm">Realtor Panel</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Open Realtor Panel</p>
-                  <p className="text-xs opacity-75">Manage assigned plots</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {session?.user?.role === 'admin' && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={() => window.open('/admin', '_blank', 'noopener,noreferrer')}
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-2 h-9 px-3"
+                    className="flex items-center gap-1.5 h-9 px-3"
                   >
                     <Settings className="w-4 h-4" />
-                    <span className="text-sm">Admin Panel</span>
+                    <span className="text-sm hidden sm:inline">Panels</span>
+                    <ChevronDown className="w-3 h-3" />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Open Admin Panel</p>
-                  <p className="text-xs opacity-75">System administration</p>
-                </TooltipContent>
-              </Tooltip>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={() => window.open('/realtor', '_blank', 'noopener,noreferrer')}
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Building2 className="w-4 h-4" />
+                    <span>Realtor Panel</span>
+                  </DropdownMenuItem>
+                  {session?.user?.role === 'admin' && (
+                    <DropdownMenuItem
+                      onClick={() => window.open('/admin', '_blank', 'noopener,noreferrer')}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
+                      <Settings className="w-4 h-4" />
+                      <span>Admin Panel</span>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             <UserDropdown disabled={isCreatingChat} />
           </div>

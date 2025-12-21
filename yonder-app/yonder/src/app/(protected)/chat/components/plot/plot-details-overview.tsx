@@ -654,15 +654,24 @@ export default function PlotDetailsOverview({
                 <div className="text-xs text-gray-500 mb-1">Property Type</div>
                 <div className="text-base font-semibold text-gray-900">
                   {renderLockedValue((() => {
-                    const reportData = plot.plotReportJson as Record<string, unknown> | null;
-                    const legalCadastral = reportData?.legal_cadastral as Record<string, unknown> | undefined;
-                    const zoningDesignation = legalCadastral?.zoning_designation as string | undefined;
+                    // Try building current_use from cadastral data (Spain)
+                    const buildingData = cadastralData?.building as Record<string, unknown> | undefined;
+                    const currentUse = getString(buildingData?.current_use);
+                    if (currentUse) return currentUse;
                     
-                    if (zoningDesignation) {
+                    // Try buildings array (Spain - multiple buildings)
+                    const buildings = cadastralData?.buildings as Array<Record<string, unknown>> | undefined;
+                    const firstBuildingUse = getString(buildings?.[0]?.current_use);
+                    if (firstBuildingUse) return firstBuildingUse;
+                    
+                    // Fallback to zoning label if available
+                    const zoningLabel = getString(zoning?.label) || getString(zoning?.label_en);
+                    if (zoningLabel) {
                       // Take the part before the "|" to shorten it
-                      const shortened = zoningDesignation.split('|')[0]?.trim();
-                      return shortened || zoningDesignation;
+                      const shortened = zoningLabel.split('|')[0]?.trim();
+                      return shortened || zoningLabel;
                     }
+                    
                     return 'N/A';
                   })())}
                 </div>
@@ -677,15 +686,46 @@ export default function PlotDetailsOverview({
                 <div className="text-xs text-gray-500 mb-1">Last Updated</div>
                 <div className="text-base font-semibold text-gray-900">
                   {renderLockedValue((() => {
-                    const reportData = plot.plotReportJson as Record<string, unknown> | null;
-                    const legalCadastral = reportData?.legal_cadastral as Record<string, unknown> | undefined;
-                    const lastUpdated = legalCadastral?.last_updated as string | undefined;
-                    
-                    if (lastUpdated) {
-                      // Format date as "Month YYYY" (e.g., "March 2024")
-                      const date = new Date(lastUpdated);
-                      return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                    // DEBUG: Log cadastral data structure
+                    if (cadastralData) {
+                      console.log('[DEBUG] cadastralData keys:', Object.keys(cadastralData));
+                      console.log('[DEBUG] cadastralData:', JSON.stringify(cadastralData, null, 2));
                     }
+                    
+                    // Try parcel beginning_lifespan (Spain - nested under parcel)
+                    const beginLifespan = getString(parcelData?.beginning_lifespan) || 
+                                          getString(parcelData?.valid_from);
+                    if (beginLifespan) {
+                      const date = new Date(beginLifespan);
+                      if (!isNaN(date.getTime())) {
+                        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                      }
+                    }
+                    
+                    // Try registration_date (Portugal - top level of cadastral)
+                    const registrationDate = getString(cadastralData?.registration_date) ||
+                                              getString(cadastralData?.beginlifespanversion) ||
+                                              getString(cadastralData?.["beginLifespanVersion"]) ||
+                                              getString(cadastralData?.validfrom) ||
+                                              getString(cadastralData?.["validFrom"]);
+                    if (registrationDate) {
+                      const date = new Date(registrationDate);
+                      if (!isNaN(date.getTime())) {
+                        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                      }
+                    }
+
+                    // Fallback: check properties sub-object (raw API response structure)
+                    const props = cadastralData?.properties as Record<string, unknown> | undefined;
+                    const propsDate = getString(props?.beginlifespanversion) ||
+                                       getString(props?.validfrom);
+                    if (propsDate) {
+                      const date = new Date(propsDate);
+                      if (!isNaN(date.getTime())) {
+                        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                      }
+                    }
+                    
                     return 'N/A';
                   })())}
                 </div>
