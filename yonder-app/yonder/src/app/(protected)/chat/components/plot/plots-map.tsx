@@ -5,7 +5,7 @@ import Map, { Marker, Popup, MapRef, Source, Layer } from 'react-map-gl/mapbox';
 import { trpc } from '@/trpc/client';
 import { Card, CardContent } from '@/app/_components/ui/card';
 import { Badge } from '@/app/_components/ui/badge';
-import { MapPin, Square, Loader2, X, Layers, ChevronDown } from 'lucide-react';
+import { MapPin, Square, Loader2, X, Layers, ChevronDown, Navigation, Trash2 } from 'lucide-react';
 import type { PlotFilters, EnrichmentData } from '@/server/trpc/router/plot/plots';
 import Image from 'next/image';
 import Supercluster from 'supercluster';
@@ -50,6 +50,9 @@ interface PlotsMapProps {
   }; // Cadastre data for parcel boundary
   country?: 'ES' | 'PT'; // Country code for cadastre layer
   droppedPin?: { latitude: number; longitude: number; label?: string } | null; // Pin dropped from chat navigation
+  onPinDrop?: (coords: { latitude: number; longitude: number }) => void; // Callback when user drops a pin
+  onPinRemove?: () => void; // Callback when user removes the pin
+  enablePinDrop?: boolean; // Enable interactive pin drop mode
 }
 
 interface MapBounds {
@@ -78,7 +81,7 @@ interface JitteredPlot {
   organizationPlotStatus?: string | null;
 }
 
-export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeKey, shouldZoomToLocation, onZoomComplete, singlePlotMode = false, singlePlot, showCadastreLayer = false, cadastreData, country = 'PT', droppedPin }: PlotsMapProps) {
+export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeKey, shouldZoomToLocation, onZoomComplete, singlePlotMode = false, singlePlot, showCadastreLayer = false, cadastreData, country = 'PT', droppedPin, onPinDrop, onPinRemove, enablePinDrop = false }: PlotsMapProps) {
   const mapRef = useRef<MapRef>(null);
   
   // Initialize view state based on mode
@@ -106,6 +109,8 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
   const [legendModal, setLegendModal] = useState<{ layerId: string; config: WMSLayerConfig } | null>(null); // Full-screen legend modal
   const [currentMunicipality, setCurrentMunicipality] = useState<string | null>(null); // For dynamic CRUS layer
   const [crusGeoJson, setCrusGeoJson] = useState<GeoJSON.FeatureCollection | null>(null); // CRUS GeoJSON data
+  const [pinDropMode, setPinDropMode] = useState(false); // Interactive pin drop mode
+  const [isDraggingPin, setIsDraggingPin] = useState(false); // Track if pin is being dragged
   
   // Detect country from viewport coordinates (dynamic switching between PT/ES layers)
   const detectedCountry = useMemo(() => {
@@ -496,6 +501,37 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
     }
   }, []);
 
+  // Handle map click for pin drop
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleMapClick = useCallback((evt: any) => {
+    // Only handle click if pin drop mode is actively toggled on
+    if (!pinDropMode) return;
+    
+    // Get coordinates from click event
+    const { lngLat } = evt;
+    if (lngLat && onPinDrop) {
+      onPinDrop({
+        latitude: lngLat.lat,
+        longitude: lngLat.lng
+      });
+      // Exit pin drop mode after dropping - user must click button again to drop another
+      setPinDropMode(false);
+    }
+  }, [pinDropMode, onPinDrop]);
+
+  // Handle pin drag end
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handlePinDragEnd = useCallback((evt: any) => {
+    const { lngLat } = evt;
+    if (lngLat && onPinDrop) {
+      onPinDrop({
+        latitude: lngLat.lat,
+        longitude: lngLat.lng
+      });
+    }
+    setIsDraggingPin(false);
+  }, [onPinDrop]);
+
   // Handle cluster click with smooth flyTo
   const handleClusterClick = useCallback((clusterId: number, longitude: number, latitude: number) => {
     try {
@@ -620,9 +656,11 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
         {...viewState}
         onMove={handleMove}
         onLoad={handleLoad}
+        onClick={handleMapClick}
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/light-v11"
+        cursor={pinDropMode ? 'crosshair' : undefined}
       >
         {/* Plot markers - only shown when 'plots' layer is enabled */}
         {enabledLayers.has('plots') && clusters.map((cluster) => {
@@ -704,23 +742,37 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
           </Marker>
         )}
 
-        {/* Dropped Pin from Chat Navigation */}
+        {/* Dropped Pin - Draggable when onPinDrop is provided */}
         {droppedPin && (
           <Marker
             longitude={droppedPin.longitude}
             latitude={droppedPin.latitude}
             anchor="bottom"
+            draggable={!!onPinDrop}
+            onDragStart={() => setIsDraggingPin(true)}
+            onDragEnd={handlePinDragEnd}
           >
-            <div className="relative animate-in fade-in-0 zoom-in-50 duration-300">
+            <div className={`relative animate-in fade-in-0 zoom-in-50 duration-300 ${onPinDrop ? 'cursor-grab active:cursor-grabbing' : ''}`}>
               <div className="flex flex-col items-center">
-                {/* Pin label */}
-                {droppedPin.label && (
-                  <div className="bg-purple-600 text-white rounded-lg shadow-lg px-3 py-1.5 text-xs font-semibold mb-1 whitespace-nowrap">
-                    {droppedPin.label}
-                  </div>
-                )}
+                {/* Pin label or coordinates */}
+                <div className="bg-purple-600 text-white rounded-lg shadow-lg px-3 py-1.5 text-xs font-semibold mb-1 whitespace-nowrap flex items-center gap-2">
+                  {droppedPin.label || `${droppedPin.latitude.toFixed(5)}, ${droppedPin.longitude.toFixed(5)}`}
+                  {/* Remove pin button */}
+                  {onPinRemove && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPinRemove();
+                      }}
+                      className="ml-1 p-0.5 hover:bg-purple-700 rounded transition-colors"
+                      title="Remove pin"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
                 {/* Pin icon */}
-                <div className="w-8 h-8 bg-purple-600 rounded-full border-3 border-white shadow-xl flex items-center justify-center">
+                <div className={`w-8 h-8 bg-purple-600 rounded-full border-3 border-white shadow-xl flex items-center justify-center transition-transform ${isDraggingPin ? 'scale-110' : ''}`}>
                   <div className="w-3 h-3 bg-white rounded-full" />
                 </div>
                 {/* Pin pointer */}
@@ -998,17 +1050,44 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
         </div>
       )}
 
-      {/* Layer Toggle Menu - show when cadastre layers are enabled */}
+      {/* Pin Drop Button - bottom-left */}
+      {enablePinDrop && (
+        <div className="absolute bottom-2 left-2 z-10 flex gap-2">
+          <button
+            onClick={() => setPinDropMode(!pinDropMode)}
+            className={`shadow-lg rounded-lg px-2 sm:px-3 py-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium transition-colors border ${
+              pinDropMode 
+                ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700' 
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            }`}
+            title={pinDropMode ? 'Click on map to drop pin' : 'Drop a pin on map'}
+          >
+            <Navigation className={`w-4 h-4 ${pinDropMode ? 'animate-pulse' : ''}`} />
+            <span>{pinDropMode ? 'Tap map' : 'Pin'}</span>
+          </button>
+          {droppedPin && onPinRemove && (
+            <button
+              onClick={onPinRemove}
+              className="bg-white shadow-lg rounded-lg px-2 sm:px-3 py-2 flex items-center gap-1.5 text-xs sm:text-sm font-medium text-red-600 hover:bg-red-50 border border-gray-200"
+              title="Remove pin"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Layer Toggle Menu - bottom-left, next to pin drop */}
       {showCadastreLayer && Object.keys(availableLayers).length > 0 && (
-        <div className="absolute bottom-2 right-2 z-10">
+        <div className="absolute bottom-2 right-16 z-10">
           <div className="relative">
             <button
               onClick={() => setShowLayerMenu(!showLayerMenu)}
-              className="bg-white shadow-lg rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border border-gray-200"
+              className="bg-white shadow-lg rounded-lg px-2 sm:px-3 py-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-50 border border-gray-200"
             >
               <Layers className="w-4 h-4" />
-              <span>Layers</span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${showLayerMenu ? 'rotate-180' : ''}`} />
+              <span className="hidden sm:inline">Layers</span>
+              <ChevronDown className={`w-3 h-3 sm:w-4 sm:h-4 transition-transform ${showLayerMenu ? 'rotate-180' : ''}`} />
             </button>
             
             {showLayerMenu && (

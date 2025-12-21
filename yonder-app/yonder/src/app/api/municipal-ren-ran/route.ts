@@ -133,6 +133,18 @@ export async function GET(request: NextRequest) {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        // 503 means no REN/RAN data available in this area - treat as "no REN present"
+        if (response.status === 503) {
+          return new NextResponse(TRANSPARENT_PIXEL, {
+            status: 200,
+            headers: {
+              'Content-Type': 'image/png',
+              'Cache-Control': 'public, max-age=86400', // Cache for 24 hours - area has no REN
+              'Access-Control-Allow-Origin': '*',
+              'X-Municipality-Status': 'no-ren-in-area',
+            },
+          });
+        }
         console.error(`[Municipal REN/RAN] Error ${response.status} for ${municipality}/${type}`);
         return new NextResponse(TRANSPARENT_PIXEL, {
           status: 200,
