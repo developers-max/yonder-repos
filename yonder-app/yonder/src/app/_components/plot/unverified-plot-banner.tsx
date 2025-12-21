@@ -34,14 +34,14 @@ export function UnverifiedPlotBanner({ plotId, isVerified = false, isClaimed = f
   if (isVerified) {
     return (
       <>
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
               <CheckCircle className="w-5 h-5 text-green-600" />
             </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="font-semibold text-green-700">Verified Plot</span>
-              <span className="text-green-600 text-sm">Confirmed Location</span>
+            <div className="min-w-0">
+              <span className="font-semibold text-green-700 block sm:inline">Verified Plot</span>
+              <span className="text-green-600 text-sm block sm:inline sm:ml-2">Confirmed Location</span>
             </div>
           </div>
           {!isClaimed && (
@@ -49,7 +49,7 @@ export function UnverifiedPlotBanner({ plotId, isVerified = false, isClaimed = f
               onClick={handleClaimClick}
               variant="outline"
               size="sm"
-              className="border-green-300 text-green-700 hover:bg-green-100 hover:text-green-800 flex-shrink-0"
+              className="border-green-300 text-green-700 hover:bg-green-100 hover:text-green-800 flex-shrink-0 w-full sm:w-auto"
             >
               Claim this plot
             </Button>
@@ -107,21 +107,21 @@ export function UnverifiedPlotBanner({ plotId, isVerified = false, isClaimed = f
   return (
     <>
       {/* Banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+      <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
             <AlertCircle className="w-5 h-5 text-amber-600" />
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="font-semibold text-amber-700">Unverified Plot</span>
-            <span className="text-amber-600 text-sm">Location not confirmed by seller</span>
+          <div className="min-w-0">
+            <span className="font-semibold text-amber-700 block sm:inline">Unverified Plot</span>
+            <span className="text-amber-600 text-sm block sm:inline sm:ml-2">Location not confirmed by seller</span>
           </div>
         </div>
         <Button
           onClick={handleClaimClick}
           variant="outline"
           size="sm"
-          className="border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-800 flex-shrink-0"
+          className="border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-800 flex-shrink-0 w-full sm:w-auto"
         >
           Claim this plot
         </Button>
