@@ -810,6 +810,19 @@ export default function PlotsPanel({ className }: PlotsPanelProps) {
                 shouldZoomToLocation={shouldZoomToLocation}
                 onZoomComplete={handleZoomComplete}
                 droppedPin={droppedPin}
+                onPinDrop={(coords) => {
+                  setDroppedPin({ ...coords, label: undefined });
+                  // Dispatch event for chat context
+                  window.dispatchEvent(new CustomEvent('mapPinDropped', { 
+                    detail: coords 
+                  }));
+                }}
+                onPinRemove={() => {
+                  setDroppedPin(null);
+                  // Dispatch event for chat context
+                  window.dispatchEvent(new CustomEvent('mapPinRemoved'));
+                }}
+                enablePinDrop={true}
                 showCadastreLayer={true}
                 country="PT"
               />

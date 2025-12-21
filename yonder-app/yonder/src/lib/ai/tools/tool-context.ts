@@ -29,6 +29,12 @@ export interface PlotContextData {
   };
 }
 
+// Dropped pin coordinates from map
+export interface DroppedPinCoords {
+  latitude: number;
+  longitude: number;
+}
+
 // Shared global context for all tools that need authentication
 let globalToolContext: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,6 +45,7 @@ let globalToolContext: {
   organizationId?: string;
   plotId?: string;
   plotData?: PlotContextData;
+  droppedPinCoords?: DroppedPinCoords;
 } | null = null;
 
 export interface ToolContextInput {
@@ -50,6 +57,7 @@ export interface ToolContextInput {
   organizationId?: string;
   plotId?: string;
   plotData?: PlotContextData;
+  droppedPinCoords?: DroppedPinCoords;
 }
 
 export function setToolContext(context: ToolContextInput) {

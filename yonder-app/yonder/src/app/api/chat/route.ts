@@ -23,7 +23,7 @@ import { eq, sql } from 'drizzle-orm';
 
 export async function POST(req: Request) {
   try {
-    const { messages, chatId, plotId } = await req.json();
+    const { messages, chatId, plotId, droppedPinCoords } = await req.json();
 
     // Get user session for authentication
     const session = await auth.api.getSession({
@@ -145,7 +145,7 @@ export async function POST(req: Request) {
     }
 
     // Set global context for tools that need authentication
-    setToolContext({ session, user: session.user, chatId, organizationId, plotId, plotData });
+    setToolContext({ session, user: session.user, chatId, organizationId, plotId, plotData, droppedPinCoords });
 
     // Build simplified system prompt - context and steps now available via tools
     const systemPrompt = `You are an expert on Portugal real estate with a specialization in finding plots of land for sale throughout Portugal. 
@@ -213,6 +213,9 @@ Be helpful, informative, and always encourage users to verify legal and financia
 
 ${plotId ? `
 PLOT CONTEXT AVAILABLE: The user is currently viewing a specific plot (ID: ${plotId}). Use the getPlotDetails tool to fetch information about this plot and provide contextual, specific advice about it. Assume they want to discuss this particular plot unless they explicitly mention searching for other plots.
+` : ''}
+${droppedPinCoords ? `
+DROPPED PIN COORDINATES: The user has dropped a pin on the map at coordinates: latitude ${droppedPinCoords.latitude}, longitude ${droppedPinCoords.longitude}. When the user refers to "the pin", "this location", "these coordinates", "the dropped pin", or similar phrases, use these coordinates. You can use these coordinates with tools like getLayerInfo, searchPlots (as location center), askMunicipalPlanning, or navigateToLocation.
 ` : ''}`;
 
     const result = streamText({

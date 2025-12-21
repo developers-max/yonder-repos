@@ -78,6 +78,7 @@ export default function ChatInterface({
   const searchParams = useSearchParams();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [includePlotContext, setIncludePlotContext] = useState(true);
+  const [droppedPinCoords, setDroppedPinCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const { data: session } = useSession();
   const createChatMutation = trpc.chat.createChat.useMutation();
   const { data: chatQueriesData, refetch: refetchChatQueries } = trpc.admin.getRemainingChatQueries.useQuery(undefined, {
@@ -107,6 +108,8 @@ export default function ChatInterface({
       chatId: chatId,
       // Include plotId in body when plot context is enabled
       ...(plotId && includePlotContext ? { plotId } : {}),
+      // Include dropped pin coordinates when available
+      ...(droppedPinCoords ? { droppedPinCoords } : {}),
     },
     onFinish: () => {
       // Refetch remaining chat queries after each message completes
@@ -157,6 +160,26 @@ export default function ChatInterface({
       setIncludePlotContext(true);
     }
   }, [plotId]);
+
+  // Listen for map pin drop/remove events
+  useEffect(() => {
+    const handlePinDrop = (event: CustomEvent<{ latitude: number; longitude: number }>) => {
+      if (event.detail) {
+        setDroppedPinCoords(event.detail);
+      }
+    };
+    
+    const handlePinRemove = () => {
+      setDroppedPinCoords(null);
+    };
+    
+    window.addEventListener('mapPinDropped', handlePinDrop as EventListener);
+    window.addEventListener('mapPinRemoved', handlePinRemove as EventListener);
+    return () => {
+      window.removeEventListener('mapPinDropped', handlePinDrop as EventListener);
+      window.removeEventListener('mapPinRemoved', handlePinRemove as EventListener);
+    };
+  }, []);
 
   const isSubmitting = status === 'submitted' || status === 'streaming' || isCreatingChat;
   const isStreamingComplete = status === 'ready' || status === 'error';
@@ -279,17 +302,21 @@ export default function ChatInterface({
     return (
       <div className="relative h-screen bg-background">
         {/* Header */}
-        <div className="absolute top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0 mr-4">
-              <h1 className="text-xl font-semibold text-foreground truncate">
+        <div className="absolute top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg px-3 md:px-6 py-3 md:py-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-shrink">
+              <h1 className="text-lg md:text-xl font-semibold text-foreground truncate">
                 Chat
               </h1>
-              <p className="text-sm text-muted-foreground">Ask me anything about your plots or general questions</p>
+              <p className="text-xs md:text-sm text-muted-foreground truncate hidden sm:block">Ask me anything about your plots or general questions</p>
             </div>
-            <div className="flex items-center gap-2">
-              <ProjectSelector />
-              <StepIndicator />
+            <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+              <div className="hidden md:block">
+                <ProjectSelector />
+              </div>
+              <div className="hidden sm:block">
+                <StepIndicator />
+              </div>
               <ChatHistoryPopover 
                 currentChatId={chatId || ''}
                 disabled={isCreatingChat}
@@ -322,11 +349,11 @@ export default function ChatInterface({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex items-center gap-1.5 h-9 px-3"
+                      className="flex items-center gap-1.5 h-9 px-2 md:px-3"
                     >
                       <Settings className="w-4 h-4" />
-                      <span className="text-sm hidden sm:inline">Panels</span>
-                      <ChevronDown className="w-3 h-3" />
+                      <span className="text-sm hidden md:inline">Panels</span>
+                      <ChevronDown className="w-3 h-3 hidden sm:block" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
@@ -355,8 +382,8 @@ export default function ChatInterface({
         </div>
 
         {/* Error State */}
-        <div className="h-full flex items-center justify-center">
-          <div className="text-center">
+        <div className="h-full flex items-center justify-center pt-16">
+          <div className="text-center px-4">
             <p className="text-destructive mb-2">Failed to load chat</p>
             <p className="text-muted-foreground text-sm">{error}</p>
           </div>
@@ -554,6 +581,20 @@ export default function ChatInterface({
                 plotId={plotId} 
                 onDismiss={() => setIncludePlotContext(false)} 
               />
+            )}
+            {/* Dropped Pin Indicator */}
+            {droppedPinCoords && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDroppedPinCoords(null);
+                  window.dispatchEvent(new CustomEvent('mapPinRemoved'));
+                }}
+                className="bg-purple-100 text-purple-700 rounded px-2 py-1 text-xs font-medium hover:bg-purple-200 transition-colors"
+                title="Click to remove pin"
+              >
+                📍 Pin
+              </button>
             )}
           <div className="flex-1 relative">
             <Textarea
