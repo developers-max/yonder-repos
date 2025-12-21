@@ -13,7 +13,7 @@ import Supercluster from 'supercluster';
 // Mapbox CSS
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Button } from '@/app/_components/ui/button';
-import { PT_WMS_LAYERS, ES_WMS_LAYERS, type WMSLayerConfig, DEFAULT_ENABLED_LAYERS, PLOTS_LAYER_CONFIG } from '@/app/_components/map/wms-layers-config';
+import { PT_WMS_LAYERS, ES_WMS_LAYERS, type WMSLayerConfig, DEFAULT_ENABLED_LAYERS, PLOTS_LAYER_CONFIG, detectCountryFromCoordinates } from '@/app/_components/map/wms-layers-config';
 
 // Get WMS layers for a country (includes plots layer)
 function getWMSLayers(country: 'PT' | 'ES'): Record<string, WMSLayerConfig> {
@@ -107,8 +107,16 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
   const [currentMunicipality, setCurrentMunicipality] = useState<string | null>(null); // For dynamic CRUS layer
   const [crusGeoJson, setCrusGeoJson] = useState<GeoJSON.FeatureCollection | null>(null); // CRUS GeoJSON data
   
-  // Get available WMS layers for the country
-  const availableLayers = useMemo(() => getWMSLayers(country), [country]);
+  // Detect country from viewport coordinates (dynamic switching between PT/ES layers)
+  const detectedCountry = useMemo(() => {
+    // In single plot mode, use the passed country prop
+    if (singlePlotMode) return country;
+    // Otherwise detect from viewport center
+    return detectCountryFromCoordinates(viewState.latitude, viewState.longitude);
+  }, [viewState.latitude, viewState.longitude, singlePlotMode, country]);
+  
+  // Get available WMS layers for the detected country
+  const availableLayers = useMemo(() => getWMSLayers(detectedCountry), [detectedCountry]);
   
   // Track if plots have finished initial load (for layer loading priority)
   const [plotsLoaded, setPlotsLoaded] = useState(false);
@@ -116,7 +124,7 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
   // Fetch municipality for current map center (for CRUS layer)
   // PRIORITY: Only fetch after plots are loaded to avoid blocking main content
   useEffect(() => {
-    if (!showCadastreLayer || country !== 'PT') return;
+    if (!showCadastreLayer || detectedCountry !== 'PT') return;
     if (!plotsLoaded && !singlePlotMode) return; // Wait for plots to load first
     
     const fetchMunicipality = async () => {
@@ -138,7 +146,7 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
     // Debounce the fetch - longer delay for layer data (lower priority)
     const timer = setTimeout(fetchMunicipality, 800);
     return () => clearTimeout(timer);
-  }, [viewState.latitude, viewState.longitude, showCadastreLayer, country, currentMunicipality, plotsLoaded, singlePlotMode]);
+  }, [viewState.latitude, viewState.longitude, showCadastreLayer, detectedCountry, currentMunicipality, plotsLoaded, singlePlotMode]);
   
   // State for enabled layers - initialize with defaults when cadastre layer is shown
   const [enabledLayers, setEnabledLayers] = useState<Set<string>>(() => {
@@ -147,6 +155,26 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
     }
     return new Set();
   });
+  
+  // Track previous country to detect country changes
+  const prevCountryRef = useRef(detectedCountry);
+  
+  // Update enabled layers when country changes (reset to defaults for new country)
+  useEffect(() => {
+    if (prevCountryRef.current !== detectedCountry) {
+      prevCountryRef.current = detectedCountry;
+      // Keep plots layer enabled, reset other layers to defaults for new country
+      const newLayers = new Set(DEFAULT_ENABLED_LAYERS[detectedCountry]);
+      // Preserve plots layer state
+      if (enabledLayers.has('plots')) {
+        newLayers.add('plots');
+      }
+      setEnabledLayers(newLayers);
+      // Clear municipality when switching countries
+      setCurrentMunicipality(null);
+      setCrusGeoJson(null);
+    }
+  }, [detectedCountry, enabledLayers]);
   
   // Fetch CRUS GeoJSON when municipality changes and CRUS layer is enabled
   // PRIORITY: Only fetch after plots are loaded
@@ -985,8 +1013,11 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
             
             {showLayerMenu && (
               <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 w-[calc(100vw-2rem)] sm:w-auto sm:min-w-[280px] max-w-[320px] overflow-hidden">
-                <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Map Layers</p>
+                  <span className="text-xs font-medium text-gray-400">
+                    {detectedCountry === 'PT' ? '🇵🇹 Portugal' : '🇪🇸 Spain'}
+                  </span>
                 </div>
                 <div className="py-1 max-h-[200px] sm:max-h-[300px] overflow-y-auto">
                   {Object.entries(availableLayers).map(([layerId, config]) => (

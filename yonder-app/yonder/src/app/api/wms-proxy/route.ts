@@ -15,8 +15,8 @@ const ALLOWED_WMS_SOURCES: Record<string, string> = {
   'pt-geo2-cos': 'https://geo2.dgterritorio.gov.pt/geoserver/COS2018/wms',
   'pt-geo2-cos-s2': 'https://geo2.dgterritorio.gov.pt/geoserver/COS-S2/wms',
   'pt-geo2-clc': 'https://geo2.dgterritorio.gov.pt/geoserver/CLC/wms',
-  // Spain
-  'es-cadastro': 'https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx',
+  // Spain (must use HTTP, HTTPS returns 403)
+  'es-cadastro': 'http://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx',
 };
 
 // 1x1 transparent PNG for error fallback (prevents Mapbox decode errors)
@@ -59,20 +59,57 @@ export async function GET(request: NextRequest) {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
     try {
-      // Fetch from the WMS server
-      const response = await fetch(wmsUrl, {
-        headers: {
-          'Accept': 'image/png, image/jpeg, */*',
-          'User-Agent': 'Yonder-WMS-Proxy/1.0',
-        },
-        signal: controller.signal,
-        cache: 'no-store', // Disable Next.js data cache
-      });
+      // Build headers - Spanish cadastre needs browser-like headers
+      const isSpanishCadastre = source === 'es-cadastro';
+      const headers: Record<string, string> = {
+        'Accept': 'image/png, image/jpeg, */*',
+        'User-Agent': isSpanishCadastre 
+          ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          : 'Yonder-WMS-Proxy/1.0',
+        'Accept-Language': 'en-US,en;q=0.9,es;q=0.8',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+      };
+      
+      // Add Referer for Spanish cadastre (some WMS servers check this)
+      if (isSpanishCadastre) {
+        headers['Referer'] = 'https://www.sedecatastro.gob.es/';
+        headers['Origin'] = 'https://www.sedecatastro.gob.es';
+      }
+      
+      // Retry logic for intermittent failures (Spanish cadastre can be flaky)
+      const maxRetries = isSpanishCadastre ? 2 : 0;
+      let lastError: Error | null = null;
+      let response: Response | null = null;
+      
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            // Small delay before retry
+            await new Promise(resolve => setTimeout(resolve, 200 * attempt));
+          }
+          
+          response = await fetch(wmsUrl, {
+            headers,
+            signal: controller.signal,
+            cache: 'no-store',
+          });
+          
+          // If successful or non-retryable error, break
+          if (response.ok || (response.status !== 403 && response.status !== 500 && response.status !== 502 && response.status !== 503)) {
+            break;
+          }
+        } catch (err) {
+          lastError = err as Error;
+          if (attempt === maxRetries) break;
+        }
+      }
       
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        console.error(`WMS proxy error: ${response.status} for ${wmsUrl}`);
+      if (!response || !response.ok) {
+        const status = response?.status || 'unknown';
+        console.error(`WMS proxy error: ${status} for ${wmsUrl} after ${maxRetries + 1} attempts`);
         // Return transparent pixel instead of error (prevents Mapbox decode errors)
         return new NextResponse(TRANSPARENT_PIXEL, {
           status: 200,
@@ -102,11 +139,13 @@ export async function GET(request: NextRequest) {
       }
 
       // Return the image with appropriate headers
+      // Spanish cadastre has rate limits - cache aggressively to reduce requests
+      const cacheTime = isSpanishCadastre ? 86400 : 3600; // 24h for Spain, 1h for others
       return new NextResponse(imageBuffer, {
         status: 200,
         headers: {
           'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=3600, s-maxage=3600',
+          'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}, stale-while-revalidate=${cacheTime * 2}`,
           'Access-Control-Allow-Origin': '*',
         },
       });

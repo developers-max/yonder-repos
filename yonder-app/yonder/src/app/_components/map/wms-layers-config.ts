@@ -231,19 +231,21 @@ export const PT_WMS_LAYERS: Record<string, WMSLayerConfig> = {
 };
 
 // Spanish Government WMS Layers
+// Note: Spanish cadastre WMS requires proxy - service can be intermittent
 export const ES_WMS_LAYERS: Record<string, WMSLayerConfig> = {
-  // Cadastre - Property boundaries
+  // Cadastre - Property boundaries (via proxy)
   cadastre: {
     id: 'cadastre',
     name: 'Catastro',
     shortName: 'Cadastre',
     description: 'Property boundaries from the Spanish Cadastre',
-    url: 'https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=Catastro&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    url: '/api/wms-proxy?source=es-cadastro&SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=Catastro&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
     layers: 'Catastro',
     opacity: 0.7,
     color: '#6366f1', // Indigo
     provider: 'Catastro',
     country: 'ES',
+    unreliable: true, // Mark as potentially intermittent
   },
 };
 
@@ -268,6 +270,57 @@ export const DEFAULT_ENABLED_LAYERS: Record<'PT' | 'ES', string[]> = {
   PT: ['plots'], // Only Land for Sale enabled by default
   ES: ['plots'],
 };
+
+// Country bounding boxes (approximate)
+const COUNTRY_BOUNDS = {
+  PT: {
+    west: -9.5,
+    east: -6.0,
+    south: 36.9,
+    north: 42.2,
+  },
+  ES: {
+    west: -9.3,
+    east: 4.5,
+    south: 35.9,
+    north: 43.8,
+  },
+};
+
+/**
+ * Detect country from map center coordinates.
+ * Uses simple bounding box check - Portugal first (smaller), then Spain.
+ * Defaults to 'PT' if location is outside both countries.
+ */
+export function detectCountryFromCoordinates(
+  latitude: number,
+  longitude: number
+): 'PT' | 'ES' {
+  // Check Portugal first (it's more restrictive and overlaps with Spain's bbox)
+  const pt = COUNTRY_BOUNDS.PT;
+  if (
+    longitude >= pt.west &&
+    longitude <= pt.east &&
+    latitude >= pt.south &&
+    latitude <= pt.north
+  ) {
+    return 'PT';
+  }
+
+  // Check Spain
+  const es = COUNTRY_BOUNDS.ES;
+  if (
+    longitude >= es.west &&
+    longitude <= es.east &&
+    latitude >= es.south &&
+    latitude <= es.north
+  ) {
+    return 'ES';
+  }
+
+  // Default to Portugal if outside both
+  return 'PT';
+}
 
 // Special "plots" layer config (not a WMS layer, but allows toggling plot markers)
 export const PLOTS_LAYER_CONFIG: WMSLayerConfig = {
