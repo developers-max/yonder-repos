@@ -235,7 +235,7 @@ export async function enrichLocation(
       
       // Spain Cadastre
       try {
-        const cadastreData = await getSpanishCadastralInfo(latitude, longitude);
+        const cadastreData = await getSpanishCadastralInfo(longitude, latitude);
         if (cadastreData) {
           enrichmentData = mergeEnrichmentData(enrichmentData, cadastreData, 'cadastral');
           response.cadastre = cadastreData;
@@ -252,7 +252,7 @@ export async function enrichLocation(
 
       // Spain Zoning
       try {
-        const spainZoning = await getSpanishZoningForPoint(latitude, longitude);
+        const spainZoning = await getSpanishZoningForPoint(longitude, latitude);
         if (spainZoning && spainZoning.label) {
           let zoningData = spainZoning;
           
@@ -297,7 +297,7 @@ export async function enrichLocation(
       console.log('Running Germany-specific enrichments...');
       
       try {
-        const germanyZoning = await getGermanZoningForPoint(latitude, longitude);
+        const germanyZoning = await getGermanZoningForPoint(longitude, latitude);
         if (germanyZoning && germanyZoning.label) {
           let zoningData = germanyZoning;
           

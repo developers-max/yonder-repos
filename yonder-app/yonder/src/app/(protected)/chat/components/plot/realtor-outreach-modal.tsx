@@ -61,6 +61,7 @@ export function RealtorOutreachModal({
   // tRPC mutations for updating plot status and realtor info
   const markOutreachSent = trpc.projects.markOutreachSent.useMutation();
   const setPlotRealtor = trpc.projects.setPlotRealtor.useMutation();
+  const sendDirectEmail = trpc.projects.sendDirectEmail.useMutation();
   const utils = trpc.useUtils();
 
   const handleInternalSend = useCallback(async () => {
@@ -69,8 +70,13 @@ export function RealtorOutreachModal({
       return onSend();
     }
 
-    const leads = (previewData?.results || [])
-      .filter(r => rowSelection[r.plotId])
+    // Separate claimed vs unclaimed plots
+    const selectedResults = (previewData?.results || []).filter(r => rowSelection[r.plotId]);
+    
+    const claimedPlots = selectedResults.filter(r => r.isClaimed && r.claimedByEmail);
+    const unclaimedPlots = selectedResults.filter(r => !r.isClaimed || !r.claimedByEmail);
+
+    const leads = unclaimedPlots
       .map(r => {
         // Use the first available realtor (agency preferred over source)
         const filteredRealtors = (r.suggestedRealtors || []).filter(
@@ -100,7 +106,7 @@ export function RealtorOutreachModal({
       })
       .filter(lead => lead.email); // Only include leads with email
 
-    if (leads.length === 0) return;
+    if (leads.length === 0 && claimedPlots.length === 0) return;
 
     setLocalSending(true);
     setPlotSendingStatus({});
@@ -108,8 +114,31 @@ export function RealtorOutreachModal({
     try {
       const baseUrl = (typeof window !== 'undefined' ? window.location.origin : '');
       let hasErrors = false;
+
+      // Process CLAIMED plots first - send via Resend (direct email)
+      for (const claimedPlot of claimedPlots) {
+        const plotId = claimedPlot.plotId;
+        try {
+          setPlotSendingStatus(prev => ({ ...prev, [plotId]: 'sending' }));
+          
+          await sendDirectEmail.mutateAsync({
+            organizationId,
+            plotId,
+            to: claimedPlot.claimedByEmail!,
+            toName: claimedPlot.claimedByName || undefined,
+            subject: emailSubject,
+            body: emailBody,
+          });
+          
+          setPlotSendingStatus(prev => ({ ...prev, [plotId]: 'sent' }));
+        } catch (error) {
+          console.error(`Error sending direct email to claimed plot ${plotId}:`, error);
+          setPlotSendingStatus(prev => ({ ...prev, [plotId]: 'error' }));
+          hasErrors = true;
+        }
+      }
       
-      // Group leads by plot ID to create one campaign per plot
+      // Group UNCLAIMED leads by plot ID to create one campaign per plot via SmartLead
       const leadsByPlot = new Map<string, typeof leads>();
       for (const lead of leads) {
         const existing = leadsByPlot.get(lead.plotId) || [];
@@ -200,7 +229,7 @@ export function RealtorOutreachModal({
     } finally {
       setLocalSending(false);
     }
-  }, [onSend, previewData?.results, rowSelection, emailSubject, emailBody, onOpenChange, organizationId, markOutreachSent, setPlotRealtor, utils]);
+  }, [onSend, previewData?.results, rowSelection, emailSubject, emailBody, onOpenChange, organizationId, markOutreachSent, setPlotRealtor, sendDirectEmail, utils]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl">
@@ -258,8 +287,10 @@ export function RealtorOutreachModal({
             </TableHeader>
             <TableBody>
               {(previewData?.results || []).map((r) => {
-                // Only show the first realtor (matching the one in plot details)
-                // Filter for agency or source roles
+                // Check if this is a claimed plot
+                const isClaimed = r.isClaimed && r.claimedByEmail;
+                
+                // For unclaimed plots, use suggested realtors
                 const filteredRealtors = (r.suggestedRealtors || []).filter(
                   realtor => realtor.role === 'agency' || realtor.role === 'source'
                 );
@@ -279,9 +310,11 @@ export function RealtorOutreachModal({
                 const sources = uniqueRealtors.filter(r => r.role === 'source');
                 const realtorOptions = [...agencies, ...sources];
                 
-                // Only use the first realtor
+                // Only use the first realtor for unclaimed plots
                 const firstRealtor = realtorOptions.length > 0 ? realtorOptions[0] : null;
-                const hasOptions = !!firstRealtor;
+                
+                // Row is enabled if it's claimed (has claimedByEmail) or has suggested realtors
+                const hasOptions = isClaimed || !!firstRealtor;
                 const disabled = !hasOptions;
                 const checked = !!rowSelection[r.plotId];
                 
@@ -297,7 +330,14 @@ export function RealtorOutreachModal({
                     </TableCell>
                     <TableCell className="font-mono text-xs">{r.plotId.slice(0, 8)}</TableCell>
                     <TableCell>
-                      {hasOptions && firstRealtor ? (
+                      {isClaimed ? (
+                        <span className="text-sm">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">Claimed</span>
+                            {r.claimedByName || 'Realtor'}
+                          </span>
+                        </span>
+                      ) : hasOptions && firstRealtor ? (
                         <span className="text-sm">{firstRealtor.company || firstRealtor.name}</span>
                       ) : (
                         <span className="text-sm text-muted-foreground">No contacts available</span>
@@ -317,7 +357,7 @@ export function RealtorOutreachModal({
                         }
                         return r.sent ? 'already sent' : (r.error ? (
                           <span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3 h-3" />{r.error}</span>
-                        ) : (hasOptions ? 'ready' : 'missing contact'));
+                        ) : (hasOptions ? (isClaimed ? 'direct email' : 'ready') : 'missing contact'));
                       })()} 
                     </TableCell>
                   </TableRow>
