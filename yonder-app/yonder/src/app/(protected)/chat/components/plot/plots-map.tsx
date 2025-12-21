@@ -1012,7 +1012,7 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
             </button>
             
             {showLayerMenu && (
-              <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 w-[calc(100vw-2rem)] sm:w-auto sm:min-w-[280px] max-w-[320px] overflow-hidden">
+              <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 w-[calc(100vw-2rem)] sm:w-[320px] overflow-hidden">
                 <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Map Layers</p>
                   <span className="text-xs font-medium text-gray-400">
@@ -1022,10 +1022,11 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
                 <div className="py-1 max-h-[200px] sm:max-h-[300px] overflow-y-auto">
                   {Object.entries(availableLayers).map(([layerId, config]) => (
                     <div key={layerId} className="px-3 py-2 hover:bg-gray-50">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        {/* Checkbox */}
                         <button
                           onClick={() => toggleLayer(layerId)}
-                          className="flex items-center gap-3 flex-1 text-left"
+                          className="flex-shrink-0"
                         >
                           <div 
                             className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
@@ -1040,22 +1041,30 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
                               </svg>
                             )}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-700 truncate">{config.shortName}</p>
-                            <p className="text-xs text-gray-500 truncate">{config.description}</p>
-                          </div>
                         </button>
-                        {config.legendUrl && (
-                          <button
-                            onClick={() => setShowLegend(showLegend === layerId ? null : layerId)}
-                            className={`p-1 rounded hover:bg-gray-200 transition-colors ${showLegend === layerId ? 'bg-gray-200' : ''}`}
-                            title="Show legend"
-                          >
-                            <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </button>
-                        )}
+                        {/* Layer name and description - fixed width */}
+                        <button
+                          onClick={() => toggleLayer(layerId)}
+                          className="flex-1 min-w-0 text-left"
+                        >
+                          <p className="text-sm font-medium text-gray-700 truncate">{config.shortName}</p>
+                          <p className="text-xs text-gray-500 truncate">{config.description}</p>
+                        </button>
+                        {/* Info button - always reserve space */}
+                        <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center">
+                          {config.legendUrl && (
+                            <button
+                              onClick={() => setShowLegend(showLegend === layerId ? null : layerId)}
+                              className={`p-1 rounded hover:bg-gray-200 transition-colors ${showLegend === layerId ? 'bg-gray-200' : ''}`}
+                              title="Show legend"
+                            >
+                              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {/* Color indicator */}
                         <div 
                           className="w-3 h-3 rounded-full flex-shrink-0" 
                           style={{ backgroundColor: config.color }}
