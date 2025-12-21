@@ -1052,7 +1052,7 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
 
       {/* Pin Drop Button - bottom-left */}
       {enablePinDrop && (
-        <div className="absolute bottom-2 left-2 z-10 flex gap-2">
+        <div className="absolute bottom-12 left-2 z-10 flex gap-2">
           <button
             onClick={() => setPinDropMode(!pinDropMode)}
             className={`shadow-lg rounded-lg px-2 sm:px-3 py-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium transition-colors border ${
@@ -1079,7 +1079,7 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
 
       {/* Layer Toggle Menu - bottom-left, next to pin drop */}
       {showCadastreLayer && Object.keys(availableLayers).length > 0 && (
-        <div className="absolute bottom-2 right-16 z-10">
+        <div className="absolute bottom-2 left-2 z-10">
           <div className="relative">
             <button
               onClick={() => setShowLayerMenu(!showLayerMenu)}
@@ -1091,7 +1091,7 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
             </button>
             
             {showLayerMenu && (
-              <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 w-[calc(100vw-2rem)] sm:w-[320px] overflow-hidden">
+              <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 w-[calc(100vw-2rem)] sm:w-[320px] overflow-hidden">
                 <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Map Layers</p>
                   <span className="text-xs font-medium text-gray-400">

@@ -99,7 +99,7 @@ export default function ChatInterface({
     }));
   }, [plotId]);
   
-  const { messages, input, handleInputChange, handleSubmit, status, setInput } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, status, setInput, setMessages } = useChat({
     id: chatId,
     api: '/api/chat',
     initialMessages,
@@ -161,15 +161,19 @@ export default function ChatInterface({
     }
   }, [plotId]);
 
-  // Listen for map pin drop/remove events
+  // Listen for map pin drop/remove events and reset chat context
   useEffect(() => {
     const handlePinDrop = (event: CustomEvent<{ latitude: number; longitude: number }>) => {
       if (event.detail) {
+        // Clear previous messages to reset context for new pin location
+        setMessages([]);
         setDroppedPinCoords(event.detail);
       }
     };
     
     const handlePinRemove = () => {
+      // Clear messages to reset context when pin is removed
+      setMessages([]);
       setDroppedPinCoords(null);
     };
     
@@ -179,6 +183,7 @@ export default function ChatInterface({
       window.removeEventListener('mapPinDropped', handlePinDrop as EventListener);
       window.removeEventListener('mapPinRemoved', handlePinRemove as EventListener);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isSubmitting = status === 'submitted' || status === 'streaming' || isCreatingChat;
