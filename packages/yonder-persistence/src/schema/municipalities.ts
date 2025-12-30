@@ -129,6 +129,7 @@ export const regulations = pgTable(
       .notNull()
       .references(() => municipalities.id, { onDelete: "cascade" }),
     docUrl: text("doc_url").notNull(),
+    summary: text("summary"),
     regulation: jsonb("regulation").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

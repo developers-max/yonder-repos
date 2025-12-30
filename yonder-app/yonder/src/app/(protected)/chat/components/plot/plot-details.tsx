@@ -35,6 +35,10 @@ import {
   Store,
   UtensilsCrossed,
   Plane,
+  Map,
+  Maximize2,
+  ArrowUpCircle,
+  Palette,
 } from 'lucide-react';
 import type { EnrichmentData } from '@/server/trpc/router/plot/plots';
 import PlotDetailsOverview from './plot-details-overview';
@@ -177,6 +181,16 @@ export default function PlotDetails({
   } = useReverseGeocode(
     plotWithCoords?.latitude ?? null,
     plotWithCoords?.longitude ?? null
+  );
+
+  // Fetch general zoning rules from municipality PDM summary using LLM
+  const municipalityId = (plot as StrongPlot | undefined)?.municipality?.id;
+  const { data: generalZoning, isLoading: generalZoningLoading } = trpc.plots.extractGeneralZoningFromMunicipality.useQuery(
+    { municipalityId: municipalityId || 0 },
+    { 
+      enabled: !!municipalityId,
+      staleTime: 1000 * 60 * 60 * 24, // Cache for 24 hours
+    }
   );
 
   const handleShare = async () => {
@@ -660,36 +674,224 @@ export default function PlotDetails({
                   })()}
 
                   {/* General Zoning Rules Card */}
-                  <div className="bg-gray-50 rounded-xl p-3 md:p-4">
-                    <div className="flex items-start justify-between mb-2 md:mb-3">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 text-sm md:text-base">General Zoning Rules</h3>
-                        <p className="text-[10px] md:text-xs text-gray-500">Typical rules for this area - not parcel-specific</p>
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 md:p-6 border border-blue-100 shadow-sm">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-start gap-2">
+                        <div className="p-2 bg-blue-100 rounded-lg">
+                          <Map className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900 text-base md:text-lg">General Zoning Rules</h3>
+                          <p className="text-xs text-gray-600 mt-0.5">Typical rules for this area - not parcel-specific</p>
+                        </div>
                       </div>
-                      <span className="text-[10px] md:text-xs text-gray-500">Municipality-level</span>
+                      <span className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-full">Municipality-level</span>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-3 md:mb-4">
-                      <div>
-                        <div className="text-[10px] md:text-xs text-gray-500">Area Classification</div>
-                        <div className="font-medium text-gray-900 text-xs md:text-sm">N/A</div>
+                    
+                    {generalZoningLoading ? (
+                      <div className="flex flex-col items-center justify-center py-8 bg-white rounded-lg border-2 border-dashed border-blue-200">
+                        <Sparkles className="w-6 h-6 animate-pulse text-blue-500 mb-2" />
+                        <span className="text-sm font-medium text-gray-700">Extracting general zoning rules from PDM...</span>
+                        <span className="text-xs text-gray-500 mt-1">Using AI to analyze municipality regulations</span>
                       </div>
-                      <div>
-                        <div className="text-[10px] md:text-xs text-gray-500">Typical Plot Size</div>
-                        <div className="font-medium text-gray-900 text-xs md:text-sm">N/A</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] md:text-xs text-gray-500">General Height Limit</div>
-                        <div className="font-medium text-gray-900 text-xs md:text-sm">N/A</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] md:text-xs text-gray-500">Building Style</div>
-                        <div className="font-medium text-gray-900 text-xs md:text-sm">N/A</div>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2 text-[10px] md:text-xs text-gray-500 bg-white rounded-lg p-2 md:p-3">
-                      <Info className="w-3 md:w-4 h-3 md:h-4 flex-shrink-0 mt-0.5" />
-                      <span>General zoning rules for this municipality are not yet available. Specific plot rules require verified coordinates.</span>
-                    </div>
+                    ) : generalZoning && (generalZoning.areaClassification || generalZoning.typicalPlotSize || generalZoning.generalHeightLimit || generalZoning.buildingStyle) ? (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                          {/* Area Classification */}
+                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="p-1.5 bg-green-100 rounded-md">
+                                <Map className="w-4 h-4 text-green-600" />
+                              </div>
+                              <div className="text-xs font-medium text-gray-600">Area Classification</div>
+                            </div>
+                            {generalZoning.areaClassification ? (
+                              <ul className="space-y-1.5 text-sm text-gray-900">
+                                {generalZoning.areaClassification.split(/[,;]/).map((item, idx) => (
+                                  <li key={idx} className="flex items-start gap-2">
+                                    <span className="text-green-600 mt-0.5 flex-shrink-0">•</span>
+                                    <span className="leading-tight">{item.trim()}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-sm text-gray-400">N/A</div>
+                            )}
+                          </div>
+
+                          {/* Typical Plot Size */}
+                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="p-1.5 bg-purple-100 rounded-md">
+                                <Maximize2 className="w-4 h-4 text-purple-600" />
+                              </div>
+                              <div className="text-xs font-medium text-gray-600">Typical Plot Size</div>
+                            </div>
+                            {generalZoning.typicalPlotSize ? (
+                              <ul className="space-y-1.5 text-sm text-gray-900">
+                                {generalZoning.typicalPlotSize.split(/[;]/).map((item, idx) => (
+                                  <li key={idx} className="flex items-start gap-2">
+                                    <span className="text-purple-600 mt-0.5 flex-shrink-0">•</span>
+                                    <span className="leading-tight">{item.trim()}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-sm text-gray-400">N/A</div>
+                            )}
+                          </div>
+
+                          {/* General Height Limit */}
+                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="p-1.5 bg-orange-100 rounded-md">
+                                <ArrowUpCircle className="w-4 h-4 text-orange-600" />
+                              </div>
+                              <div className="text-xs font-medium text-gray-600">General Height Limit</div>
+                            </div>
+                            {generalZoning.generalHeightLimit ? (
+                              <ul className="space-y-1.5 text-sm text-gray-900">
+                                {generalZoning.generalHeightLimit.split(/[;]/).map((item, idx) => (
+                                  <li key={idx} className="flex items-start gap-2">
+                                    <span className="text-orange-600 mt-0.5 flex-shrink-0">•</span>
+                                    <span className="leading-tight">{item.trim()}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-sm text-gray-400">N/A</div>
+                            )}
+                          </div>
+
+                          {/* Building Style */}
+                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="p-1.5 bg-pink-100 rounded-md">
+                                <Palette className="w-4 h-4 text-pink-600" />
+                              </div>
+                              <div className="text-xs font-medium text-gray-600">Building Style</div>
+                            </div>
+                            {generalZoning.buildingStyle ? (
+                              <ul className="space-y-1.5 text-sm text-gray-900">
+                                {generalZoning.buildingStyle.split(/[;]/).map((item, idx) => (
+                                  <li key={idx} className="flex items-start gap-2">
+                                    <span className="text-pink-600 mt-0.5 flex-shrink-0">•</span>
+                                    <span className="leading-tight">{item.trim()}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-sm text-gray-400">N/A</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {(generalZoning.futurePlans || generalZoning.keyPoints || generalZoning.additionalNotes) && (
+                          <div className="mt-4 bg-white/80 backdrop-blur rounded-lg p-5 border border-blue-200 space-y-4">
+                            <div className="flex items-center gap-2 pb-2 border-b border-blue-100">
+                              <Info className="w-5 h-5 text-blue-600" />
+                              <h4 className="font-semibold text-gray-900 text-sm">Additional Information</h4>
+                            </div>
+
+                            {/* Future Plans */}
+                            {generalZoning.futurePlans && generalZoning.futurePlans.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <TrendingUp className="w-4 h-4 text-blue-600" />
+                                  <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Future Plans</h5>
+                                </div>
+                                <ul className="space-y-2">
+                                  {generalZoning.futurePlans.map((plan, idx) => (
+                                    <li key={idx} className="flex items-start gap-2.5 text-sm text-gray-700">
+                                      <span className="text-blue-500 mt-0.5 flex-shrink-0">▸</span>
+                                      <span className="leading-relaxed">{plan}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Key Points */}
+                            {generalZoning.keyPoints && generalZoning.keyPoints.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                  <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Key Points</h5>
+                                </div>
+                                <ul className="space-y-2">
+                                  {generalZoning.keyPoints.map((point, idx) => (
+                                    <li key={idx} className="flex items-start gap-2.5 text-sm text-gray-700">
+                                      <span className="text-amber-500 mt-0.5 flex-shrink-0">▸</span>
+                                      <span className="leading-relaxed">{point}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* General Notes */}
+                            {generalZoning.additionalNotes && (
+                              <div className="pt-2 border-t border-gray-100">
+                                <p className="text-xs text-gray-600 leading-relaxed italic">{generalZoning.additionalNotes}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                          {/* Area Classification - Empty */}
+                          <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="p-1.5 bg-gray-100 rounded-md">
+                                <Map className="w-4 h-4 text-gray-400" />
+                              </div>
+                              <div className="text-xs font-medium text-gray-500">Area Classification</div>
+                            </div>
+                            <div className="font-medium text-gray-400 text-sm">N/A</div>
+                          </div>
+
+                          {/* Typical Plot Size - Empty */}
+                          <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="p-1.5 bg-gray-100 rounded-md">
+                                <Maximize2 className="w-4 h-4 text-gray-400" />
+                              </div>
+                              <div className="text-xs font-medium text-gray-500">Typical Plot Size</div>
+                            </div>
+                            <div className="font-medium text-gray-400 text-sm">N/A</div>
+                          </div>
+
+                          {/* General Height Limit - Empty */}
+                          <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="p-1.5 bg-gray-100 rounded-md">
+                                <ArrowUpCircle className="w-4 h-4 text-gray-400" />
+                              </div>
+                              <div className="text-xs font-medium text-gray-500">General Height Limit</div>
+                            </div>
+                            <div className="font-medium text-gray-400 text-sm">N/A</div>
+                          </div>
+
+                          {/* Building Style - Empty */}
+                          <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="p-1.5 bg-gray-100 rounded-md">
+                                <Palette className="w-4 h-4 text-gray-400" />
+                              </div>
+                              <div className="text-xs font-medium text-gray-500">Building Style</div>
+                            </div>
+                            <div className="font-medium text-gray-400 text-sm">N/A</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex items-start gap-3 text-xs text-gray-600 bg-white/80 rounded-lg p-3 border border-gray-200">
+                          <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-gray-400" />
+                          <span>General zoning rules for this municipality are not yet available. Specific plot rules require verified coordinates.</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

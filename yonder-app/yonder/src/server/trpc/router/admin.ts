@@ -872,12 +872,14 @@ export const adminRouter = router({
         limit: z.number().default(20),
         search: z.string().optional(),
         country: z.string().optional(),
+        parishesOnly: z.boolean().optional(),
+        parentMunicipalitySearch: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       await requireAdmin(ctx.user.id);
 
-      const { page, limit, search, country } = input;
+      const { page, limit, search, country, parishesOnly, parentMunicipalitySearch } = input;
       const offset = (page - 1) * limit;
 
       // Build conditions
@@ -897,6 +899,14 @@ export const adminRouter = router({
       }
       if (country) {
         conditions.push(eq(municipalities.country, country));
+      }
+      if (parishesOnly) {
+        conditions.push(eq(municipalities.isParish, true));
+      }
+      if (parentMunicipalitySearch) {
+        conditions.push(
+          sql`${municipalities.parentMunicipalityName} ILIKE '%' || ${parentMunicipalitySearch} || '%'`
+        );
       }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

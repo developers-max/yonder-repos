@@ -1,10 +1,11 @@
 import { publicProcedure, router } from '../../trpc';
 import { db } from "@/lib/db";
-import { enrichedPlots, municipalities, organizationPlotsTable } from "@/lib/db/schema";
+import { enrichedPlots, municipalities, organizationPlotsTable, regulations } from "@/lib/db/schema";
 import { and, desc, eq, gte, lte, sql, asc } from "drizzle-orm";
 import { z } from "zod";
 import { extractBuildingRegulations, BuildingRegulationsSchema } from './extract-regulations';
 import { generatePlotDescription } from './generate-description';
+import { extractGeneralZoningRules, GeneralZoningRulesSchema } from './extract-general-zoning';
 
 // Type for enrichment data structure
 export type EnrichmentData = {
@@ -486,6 +487,45 @@ export const plotsRouter = router({
         return regulations;
       } catch (error) {
         console.error('[extractPlotRegulations] Error:', error);
+        throw error;
+      }
+    }),
+
+  // Extract general zoning rules from municipality PDM summary using LLM
+  extractGeneralZoningFromMunicipality: publicProcedure
+    .input(z.object({
+      municipalityId: z.number()
+    }))
+    .output(GeneralZoningRulesSchema)
+    .query(async ({ input }) => {
+      try {
+        // Query regulations table for this municipality's summary
+        const regulation = await db
+          .select({
+            summary: regulations.summary,
+          })
+          .from(regulations)
+          .where(eq(regulations.municipalityId, input.municipalityId))
+          .limit(1);
+
+        if (!regulation[0] || !regulation[0].summary) {
+          // Return nulls if no regulation summary found
+          return {
+            areaClassification: null,
+            typicalPlotSize: null,
+            generalHeightLimit: null,
+            buildingStyle: null,
+            futurePlans: null,
+            keyPoints: null,
+            additionalNotes: null,
+          };
+        }
+
+        // Use LLM to extract general zoning rules from regulation summary
+        const zoningRules = await extractGeneralZoningRules(regulation[0].summary);
+        return zoningRules;
+      } catch (error) {
+        console.error('[extractGeneralZoningFromMunicipality] Error:', error);
         throw error;
       }
     }),
