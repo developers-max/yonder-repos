@@ -41,6 +41,8 @@ export const municipalities = pgTable(
     country: varchar({ length: 2 }).default('PT'), // Country code: PT, ES
     website: varchar({ length: 500 }),
     pdmDocuments: jsonb("pdm_documents").$type<PDMDocuments>(),
+    isParish: boolean("is_parish").default(false),
+    parentMunicipalityName: varchar("parent_municipality_name", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
@@ -49,6 +51,8 @@ export const municipalities = pgTable(
     index("idx_municipalities_district").using("btree", table.district),
     index("idx_municipalities_website").using("btree", table.website),
     index("idx_municipalities_pdm_gin").using("gin", table.pdmDocuments),
+    index("idx_municipalities_is_parish").using("btree", table.isParish),
+    index("idx_municipalities_parent_name").using("btree", table.parentMunicipalityName),
   ]
 );
 

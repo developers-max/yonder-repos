@@ -40,7 +40,9 @@ type Municipality = {
   district: string | null;
   country: string | null;
   website: string | null;
-  pdmDocuments: { documents: PDMDocument[]; lastUpdated: string } | null;
+  pdmDocuments?: { documents: PDMDocument[]; lastUpdated: string } | null;
+  isParish: boolean | null;
+  parentMunicipalityName: string | null;
   createdAt: string | Date | null;
   updatedAt: string | Date | null;
 };
@@ -70,14 +72,23 @@ export default function AdminMunicipalitiesPage() {
   });
 
   const addDocMutation = trpc.admin.updateMunicipalityPdm.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.updatedParishCount && data.updatedParishCount > 0) {
+        setProcessingStatus('success');
+        setProcessingMessage(`PDM updated! Also updated ${data.updatedParishCount} parish${data.updatedParishCount > 1 ? 'es' : ''}.`);
+      }
       refetch();
-      resetForm();
+      if (!processForRag) {
+        setTimeout(() => resetForm(), 2000);
+      }
     },
   });
 
   const removeDocMutation = trpc.admin.removeMunicipalityPdmDocument.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.updatedParishCount && data.updatedParishCount > 0) {
+        alert(`Document removed! Also removed from ${data.updatedParishCount} parish${data.updatedParishCount > 1 ? 'es' : ''}.`);
+      }
       refetch();
     },
   });
@@ -283,7 +294,7 @@ export default function AdminMunicipalitiesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[60px]">ID</TableHead>
-                <TableHead className="w-[140px]">Name</TableHead>
+                <TableHead className="w-[180px]">Name</TableHead>
                 <TableHead className="w-[100px]">District</TableHead>
                 <TableHead className="w-[60px] text-center">Country</TableHead>
                 <TableHead className="w-[160px]">Website</TableHead>
@@ -310,7 +321,21 @@ export default function AdminMunicipalitiesPage() {
                 municipalities.map((m) => (
                   <TableRow key={m.id} className="border-t">
                     <TableCell className="text-gray-500 font-mono text-xs">{m.id}</TableCell>
-                    <TableCell className="text-gray-900 font-medium text-sm">{m.name}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1 max-w-[200px]">
+                        <div className="text-gray-900 font-medium text-sm truncate" title={m.name}>{m.name}</div>
+                        {m.isParish && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                              Parish
+                            </span>
+                            {m.parentMunicipalityName && (
+                              <span className="text-xs text-gray-500 truncate" title={`of ${m.parentMunicipalityName}`}>of {m.parentMunicipalityName}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-gray-600 text-sm">{m.district || <span className="text-gray-400">-</span>}</TableCell>
                     <TableCell className="text-center">
                       {m.country === 'PT' ? '🇵🇹' : m.country === 'ES' ? '🇪🇸' : m.country === 'DE' ? '🇩🇪' : m.country || '-'}

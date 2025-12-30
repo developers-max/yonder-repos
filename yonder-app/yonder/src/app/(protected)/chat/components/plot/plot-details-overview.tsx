@@ -68,6 +68,7 @@ type RealtorForPlot = {
 interface PlotDetailsOverviewProps {
   plot: Plot;
   hasRealCoordinates?: boolean;
+  isAdmin?: boolean;
 }
 
 // Get country code from plot's municipality (defaults to PT)
@@ -80,6 +81,7 @@ function getCountryFromPlot(plot: Plot): 'PT' | 'ES' {
 export default function PlotDetailsOverview({
   plot,
   hasRealCoordinates = true,
+  isAdmin = false,
 }: PlotDetailsOverviewProps) {
   const { data: session } = useSession();
   const organizationId = session?.session?.activeOrganizationId;
@@ -111,10 +113,6 @@ export default function PlotDetailsOverview({
       : (null as unknown as { plotId: string; municipalityId: number }),
     { enabled: !!plot?.municipality?.id }
   );
-
-  // Check if current user is admin
-  const { data: adminStatus } = trpc.admin.isAdmin.useQuery();
-  const isAdmin = adminStatus?.isAdmin ?? false;
 
   const handleRequestPdm = async () => {
     if (!plot?.municipality?.id) return;
@@ -298,7 +296,7 @@ export default function PlotDetailsOverview({
           <div className="rounded-2xl border border-gray-200 p-4 bg-white">
             <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Cadastral Reference</div>
             <div className="text-xl font-semibold text-gray-900">
-              {!hasRealCoordinates ? (
+              {!isAdmin && !hasRealCoordinates ? (
                 <span className="flex items-center gap-2 text-base text-gray-500">
                   <Lock className="w-4 h-4" />
                   <span className="text-sm italic font-normal">Requires verified plot coordinates</span>
@@ -311,7 +309,7 @@ export default function PlotDetailsOverview({
           <div className="rounded-2xl border border-gray-200 p-4 bg-white">
             <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Parcel Area</div>
             <div className="text-xl font-semibold text-gray-900">
-              {!hasRealCoordinates ? (
+              {!isAdmin && !hasRealCoordinates ? (
                 <span className="flex items-center gap-2 text-base text-gray-500">
                   <Lock className="w-4 h-4" />
                   <span className="text-sm italic font-normal">Requires verified plot coordinates</span>
@@ -324,7 +322,7 @@ export default function PlotDetailsOverview({
           <div className="rounded-2xl border border-gray-200 p-4 bg-white">
             <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Plot Label</div>
             <div className="text-xl font-semibold text-gray-900">
-              {!hasRealCoordinates ? (
+              {!isAdmin && !hasRealCoordinates ? (
                 <span className="flex items-center gap-2 text-base text-gray-500">
                   <Lock className="w-4 h-4" />
                   <span className="text-sm italic font-normal">Requires verified plot coordinates</span>
@@ -383,7 +381,7 @@ export default function PlotDetailsOverview({
           </Badge>
         </div>
 
-        {!hasRealCoordinates ? (
+        {!isAdmin && !hasRealCoordinates ? (
           <div className="flex items-center gap-2 text-gray-500">
             <Lock className="w-4 h-4" />
             <span className="text-sm italic">Requires verified plot coordinates</span>
@@ -484,7 +482,7 @@ export default function PlotDetailsOverview({
           </Badge>
         </div>
 
-        {!hasRealCoordinates ? (
+        {!isAdmin && !hasRealCoordinates ? (
           <div className="flex items-center gap-2 text-gray-500">
             <Lock className="w-4 h-4" />
             <span className="text-sm italic">Requires verified plot coordinates</span>
@@ -609,7 +607,7 @@ export default function PlotDetailsOverview({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {hasRealCoordinates && isAdmin && (
+            {isAdmin && (
               <Link
                 href={`/admin/plots?plotId=${plot.id}`}
                 target="_blank"
@@ -623,7 +621,7 @@ export default function PlotDetailsOverview({
           </div>
         </div>
 
-        {!hasRealCoordinates ? (
+        {!isAdmin && !hasRealCoordinates ? (
           <div className="flex items-center gap-2 text-gray-500">
             <Lock className="w-4 h-4" />
             <span className="text-sm italic">Requires verified plot coordinates</span>

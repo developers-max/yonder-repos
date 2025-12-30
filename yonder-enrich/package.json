@@ -38,6 +38,7 @@
     "sync-price-size": "ts-node src/index.ts sync-price-size",
     "mviews:create": "ts-node src/etl/materialized_views.ts create",
     "mviews:refresh": "ts-node src/etl/materialized_views.ts refresh",
+    "populate-parishes": "ts-node src/etl/populate-parish-flags.ts",
     "build": "tsc",
     "dev": "ts-node-dev --respawn src/index.ts",
     "test": "jest",

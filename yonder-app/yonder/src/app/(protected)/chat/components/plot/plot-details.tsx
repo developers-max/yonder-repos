@@ -703,7 +703,7 @@ export default function PlotDetails({
                       <FileText className="w-5 h-5 text-gray-700" />
                       <h3 className="text-lg font-semibold text-gray-900">Land Data for This Plot</h3>
                     </div>
-                    {!strongPlot.realLatitude && !strongPlot.realLongitude && (
+                    {!isAdmin && !strongPlot.realLatitude && !strongPlot.realLongitude && (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full">
                         <Lock className="w-3.5 h-3.5" />
                         Location Required
@@ -711,8 +711,8 @@ export default function PlotDetails({
                     )}
                   </div>
                   
-                  {/* Warning banner - only show when real coordinates are empty */}
-                  {!strongPlot.realLatitude && !strongPlot.realLongitude && (
+                  {/* Warning banner - only show when real coordinates are empty and user is not admin */}
+                  {!isAdmin && !strongPlot.realLatitude && !strongPlot.realLongitude && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 md:p-4">
                       <div className="flex items-start gap-2 mb-1">
                         <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -750,14 +750,14 @@ export default function PlotDetails({
                           </h2>
                         </div>
                         <p className="text-xs md:text-sm text-gray-600">
-                          {!strongPlot.realLatitude && !strongPlot.realLongitude 
+                          {!isAdmin && !strongPlot.realLatitude && !strongPlot.realLongitude 
                             ? "Available after location verification"
                             : "Transform raw data into actionable insights with our AI-powered analysis"
                           }
                         </p>
                       </div>
                       <div className="flex items-center">
-                        {!strongPlot.realLatitude && !strongPlot.realLongitude ? (
+                        {!isAdmin && !strongPlot.realLatitude && !strongPlot.realLongitude ? (
                           <span className="inline-flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-xs md:text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg">
                             <Lock className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Requires </span>Verified Location
@@ -793,6 +793,7 @@ export default function PlotDetails({
               <PlotDetailsOverview 
                 plot={strongPlot} 
                 hasRealCoordinates={!!(strongPlot.realLatitude || strongPlot.realLongitude)}
+                isAdmin={isAdmin}
               />
             )}
 
