@@ -10,6 +10,7 @@ import {
   enrichedPlots,
   pdmRequestsTable,
   municipalities,
+  portugalParishes,
 } from "../../../lib/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 
@@ -871,12 +872,14 @@ export const adminRouter = router({
         limit: z.number().default(20),
         search: z.string().optional(),
         country: z.string().optional(),
+        parishesOnly: z.boolean().optional(),
+        parentMunicipalitySearch: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       await requireAdmin(ctx.user.id);
 
-      const { page, limit, search, country } = input;
+      const { page, limit, search, country, parishesOnly, parentMunicipalitySearch } = input;
       const offset = (page - 1) * limit;
 
       // Build conditions
@@ -897,6 +900,14 @@ export const adminRouter = router({
       if (country) {
         conditions.push(eq(municipalities.country, country));
       }
+      if (parishesOnly) {
+        conditions.push(eq(municipalities.isParish, true));
+      }
+      if (parentMunicipalitySearch) {
+        conditions.push(
+          sql`${municipalities.parentMunicipalityName} ILIKE '%' || ${parentMunicipalitySearch} || '%'`
+        );
+      }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -915,6 +926,8 @@ export const adminRouter = router({
           country: municipalities.country,
           website: municipalities.website,
           pdmDocuments: municipalities.pdmDocuments,
+          isParish: municipalities.isParish,
+          parentMunicipalityName: municipalities.parentMunicipalityName,
           createdAt: municipalities.createdAt,
           updatedAt: municipalities.updatedAt,
         })
@@ -997,7 +1010,7 @@ export const adminRouter = router({
         lastUpdated: new Date().toISOString(),
       };
 
-      // Update municipality
+      // Update the main municipality
       await db
         .update(municipalities)
         .set({
@@ -1006,7 +1019,57 @@ export const adminRouter = router({
         })
         .where(eq(municipalities.id, municipalityId));
 
-      return { success: true, documentId: newDoc.id };
+      // Cascade update to child parishes if this is a parent municipality
+      let updatedParishCount = 0;
+      if (!current.isParish) {
+        // Find all parishes that belong to this municipality
+        const parishes = await db
+          .select({ name: portugalParishes.name })
+          .from(portugalParishes)
+          .innerJoin(
+            sql`portugal_municipalities`,
+            sql`portugal_parishes.municipality_id = portugal_municipalities.id`
+          )
+          .where(sql`portugal_municipalities.name = ${current.name}`);
+
+        if (parishes.length > 0) {
+          // Update all matching parish municipalities with the same PDM document
+          const parishNames = parishes.map((p) => p.name);
+          
+          for (const parishName of parishNames) {
+            const [parishMunicipality] = await db
+              .select()
+              .from(municipalities)
+              .where(eq(municipalities.name, parishName))
+              .limit(1);
+
+            if (parishMunicipality) {
+              const parishExistingDocs = parishMunicipality.pdmDocuments?.documents || [];
+              const parishUpdatedPdmDocuments = {
+                documents: [...parishExistingDocs, newDoc],
+                lastUpdated: new Date().toISOString(),
+              };
+
+              await db
+                .update(municipalities)
+                .set({
+                  pdmDocuments: parishUpdatedPdmDocuments,
+                  updatedAt: new Date(),
+                  parentMunicipalityName: current.name,
+                })
+                .where(eq(municipalities.id, parishMunicipality.id));
+              
+              updatedParishCount++;
+            }
+          }
+        }
+      }
+
+      return { 
+        success: true, 
+        documentId: newDoc.id,
+        updatedParishCount,
+      };
     }),
 
   // Remove a PDM document from municipality
@@ -1034,14 +1097,14 @@ export const adminRouter = router({
       }
 
       const existingDocs = current.pdmDocuments?.documents || [];
-      const updatedDocs = existingDocs.filter((doc) => doc.id !== documentId);
+      const updatedDocs = existingDocs.filter((doc: any) => doc.id !== documentId);
 
       const updatedPdmDocuments = {
         documents: updatedDocs,
         lastUpdated: new Date().toISOString(),
       };
 
-      // Update municipality
+      // Update the main municipality
       await db
         .update(municipalities)
         .set({
@@ -1050,7 +1113,52 @@ export const adminRouter = router({
         })
         .where(eq(municipalities.id, municipalityId));
 
-      return { success: true };
+      // Cascade removal to child parishes if this is a parent municipality
+      let updatedParishCount = 0;
+      if (!current.isParish) {
+        // Find all parishes that belong to this municipality
+        const parishes = await db
+          .select({ name: portugalParishes.name })
+          .from(portugalParishes)
+          .innerJoin(
+            sql`portugal_municipalities`,
+            sql`portugal_parishes.municipality_id = portugal_municipalities.id`
+          )
+          .where(sql`portugal_municipalities.name = ${current.name}`);
+
+        if (parishes.length > 0) {
+          const parishNames = parishes.map((p) => p.name);
+          
+          for (const parishName of parishNames) {
+            const [parishMunicipality] = await db
+              .select()
+              .from(municipalities)
+              .where(eq(municipalities.name, parishName))
+              .limit(1);
+
+            if (parishMunicipality) {
+              const parishExistingDocs = parishMunicipality.pdmDocuments?.documents || [];
+              const parishUpdatedDocs = parishExistingDocs.filter((doc: any) => doc.id !== documentId);
+              const parishUpdatedPdmDocuments = {
+                documents: parishUpdatedDocs,
+                lastUpdated: new Date().toISOString(),
+              };
+
+              await db
+                .update(municipalities)
+                .set({
+                  pdmDocuments: parishUpdatedPdmDocuments,
+                  updatedAt: new Date(),
+                })
+                .where(eq(municipalities.id, parishMunicipality.id));
+              
+              updatedParishCount++;
+            }
+          }
+        }
+      }
+
+      return { success: true, updatedParishCount };
     }),
 
   // Update municipality website

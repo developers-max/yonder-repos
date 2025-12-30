@@ -48,6 +48,7 @@ export {
   queryREN,
   queryRAN,
   getCRUSZoningForPoint,
+  querySpainZoning,
 } from './zoning';
 
 // Re-export land use functions
@@ -64,7 +65,7 @@ export { queryElevation } from './elevation';
 // Import for internal use
 import { queryAdministrativeLayers, queryMunicipality } from './administrative';
 import { queryPortugueseCadastre, querySpanishCadastre } from './cadastre';
-import { queryREN, queryRAN } from './zoning';
+import { queryREN, queryRAN, querySpainZoning } from './zoning';
 import { queryLandUseLayers } from './land-use';
 import { queryElevation } from './elevation';
 import { LayerResult, LayerQueryOptions, LayerQueryResponse, MunicipalityRecord, BoundingBox } from './types';
@@ -194,13 +195,14 @@ async function querySpainLayers(
 ): Promise<LayerResult[]> {
   const layers: LayerResult[] = [];
 
-  // Query Spanish cadastre and elevation in parallel
-  const [cadastreResult, elevationResult] = await Promise.all([
+  // Query Spanish cadastre, zoning, and elevation in parallel
+  const [cadastreResult, zoningResult, elevationResult] = await Promise.all([
     querySpanishCadastre(lat, lng),
+    querySpainZoning(lat, lng),
     queryElevation(lat, lng),
   ]);
 
-  layers.push(cadastreResult, elevationResult);
+  layers.push(cadastreResult, zoningResult, elevationResult);
 
   return layers;
 }

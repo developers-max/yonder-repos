@@ -40,7 +40,9 @@ type Municipality = {
   district: string | null;
   country: string | null;
   website: string | null;
-  pdmDocuments: { documents: PDMDocument[]; lastUpdated: string } | null;
+  pdmDocuments?: { documents: PDMDocument[]; lastUpdated: string } | null;
+  isParish: boolean | null;
+  parentMunicipalityName: string | null;
   createdAt: string | Date | null;
   updatedAt: string | Date | null;
 };
@@ -48,6 +50,8 @@ type Municipality = {
 export default function AdminMunicipalitiesPage() {
   const [search, setSearch] = useState('');
   const [country, setCountry] = useState<string>('');
+  const [parishesOnly, setParishesOnly] = useState(false);
+  const [parentMunicipalitySearch, setParentMunicipalitySearch] = useState('');
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedMunicipality, setSelectedMunicipality] = useState<Municipality | null>(null);
@@ -67,17 +71,28 @@ export default function AdminMunicipalitiesPage() {
     limit,
     search: search || undefined,
     country: country || undefined,
+    parishesOnly: parishesOnly || undefined,
+    parentMunicipalitySearch: parentMunicipalitySearch || undefined,
   });
 
   const addDocMutation = trpc.admin.updateMunicipalityPdm.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.updatedParishCount && data.updatedParishCount > 0) {
+        setProcessingStatus('success');
+        setProcessingMessage(`PDM updated! Also updated ${data.updatedParishCount} parish${data.updatedParishCount > 1 ? 'es' : ''}.`);
+      }
       refetch();
-      resetForm();
+      if (!processForRag) {
+        setTimeout(() => resetForm(), 2000);
+      }
     },
   });
 
   const removeDocMutation = trpc.admin.removeMunicipalityPdmDocument.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.updatedParishCount && data.updatedParishCount > 0) {
+        alert(`Document removed! Also removed from ${data.updatedParishCount} parish${data.updatedParishCount > 1 ? 'es' : ''}.`);
+      }
       refetch();
     },
   });
@@ -217,55 +232,106 @@ export default function AdminMunicipalitiesPage() {
 
       <Card>
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative w-full max-w-md">
-              <Search className="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
-              <Input
-                placeholder="Search by ID, name, or district..."
-                className="pl-8"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative w-full max-w-md">
+                <Search className="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                <Input
+                  placeholder="Search by ID, name, or district..."
+                  className="pl-8"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                />
+              </div>
+
+              <Select 
+                value={country} 
+                onValueChange={(value) => {
+                  setCountry(value === 'all' ? '' : value);
                   setPage(1);
                 }}
-              />
+              >
+                <SelectTrigger className="w-[180px]">
+                  <Globe2 className="w-4 h-4 mr-2 text-gray-400" />
+                  <SelectValue placeholder="All countries" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All countries</SelectItem>
+                  {countries?.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c === 'PT' ? '🇵🇹 Portugal' : c === 'ES' ? '🇪🇸 Spain' : c === 'DE' ? '🇩🇪 Germany' : c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                onClick={() => refetch()}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Refresh'
+                )}
+              </Button>
             </div>
 
-            <Select 
-              value={country} 
-              onValueChange={(value) => {
-                setCountry(value === 'all' ? '' : value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-[180px]">
-                <Globe2 className="w-4 h-4 mr-2 text-gray-400" />
-                <SelectValue placeholder="All countries" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All countries</SelectItem>
-                {countries?.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c === 'PT' ? '🇵🇹 Portugal' : c === 'ES' ? '🇪🇸 Spain' : c === 'DE' ? '🇩🇪 Germany' : c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Parish Filters */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="parishesOnly"
+                  checked={parishesOnly}
+                  onChange={(e) => {
+                    setParishesOnly(e.target.checked);
+                    setPage(1);
+                  }}
+                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <label htmlFor="parishesOnly" className="text-sm font-medium text-purple-900 cursor-pointer">
+                  Show parishes only
+                </label>
+              </div>
 
-            <Button
-              variant="outline"
-              onClick={() => refetch()}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                'Refresh'
+              {parishesOnly && (
+                <div className="relative w-full max-w-xs">
+                  <Search className="w-4 h-4 text-purple-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                  <Input
+                    placeholder="Filter by parent municipality..."
+                    className="pl-8 border-purple-200 focus:border-purple-400 focus:ring-purple-400"
+                    value={parentMunicipalitySearch}
+                    onChange={(e) => {
+                      setParentMunicipalitySearch(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </div>
               )}
-            </Button>
+
+              {(parishesOnly || parentMunicipalitySearch) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setParishesOnly(false);
+                    setParentMunicipalitySearch('');
+                    setPage(1);
+                  }}
+                  className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                >
+                  Clear parish filters
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -283,7 +349,7 @@ export default function AdminMunicipalitiesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[60px]">ID</TableHead>
-                <TableHead className="w-[140px]">Name</TableHead>
+                <TableHead className="w-[180px]">Name</TableHead>
                 <TableHead className="w-[100px]">District</TableHead>
                 <TableHead className="w-[60px] text-center">Country</TableHead>
                 <TableHead className="w-[160px]">Website</TableHead>
@@ -310,7 +376,21 @@ export default function AdminMunicipalitiesPage() {
                 municipalities.map((m) => (
                   <TableRow key={m.id} className="border-t">
                     <TableCell className="text-gray-500 font-mono text-xs">{m.id}</TableCell>
-                    <TableCell className="text-gray-900 font-medium text-sm">{m.name}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1 max-w-[200px]">
+                        <div className="text-gray-900 font-medium text-sm truncate" title={m.name}>{m.name}</div>
+                        {m.isParish && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                              Parish
+                            </span>
+                            {m.parentMunicipalityName && (
+                              <span className="text-xs text-gray-500 truncate" title={`of ${m.parentMunicipalityName}`}>of {m.parentMunicipalityName}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-gray-600 text-sm">{m.district || <span className="text-gray-400">-</span>}</TableCell>
                     <TableCell className="text-center">
                       {m.country === 'PT' ? '🇵🇹' : m.country === 'ES' ? '🇪🇸' : m.country === 'DE' ? '🇩🇪' : m.country || '-'}

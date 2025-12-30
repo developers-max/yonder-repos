@@ -1,6 +1,7 @@
 /**
  * Zoning Layer Queries
- * REN, RAN, CRUS - wraps existing crus_lookup.ts and adds REN/RAN queries
+ * REN, RAN, CRUS (Portugal) - wraps existing crus_lookup.ts and adds REN/RAN queries
+ * Spain Zoning - wraps existing spain_lookup.ts for regional zoning
  */
 
 import axios from 'axios';
@@ -12,6 +13,9 @@ export { getCRUSZoningForPoint } from '../enrichments/crus/crus_lookup';
 
 // Import for internal use
 import { getCRUSZoningForPoint } from '../enrichments/crus/crus_lookup';
+
+// Import Spain zoning lookup
+import { getSpanishZoningForPoint } from '../enrichments/spain-zoning/spain_lookup';
 
 const httpsAgent = new HttpsAgent({
   keepAlive: true,
@@ -423,6 +427,74 @@ export async function queryRAN(
       layerName,
       found: false,
       error: 'DGT RAN service temporarily unavailable',
+    };
+  }
+}
+
+/**
+ * Query Spain Zoning (Regional WFS services)
+ * Uses regional services from Autonomous Communities (e.g., Catalunya MUC)
+ */
+export async function querySpainZoning(
+  lat: number,
+  lng: number
+): Promise<LayerResult> {
+  const layerId = 'es-zoning';
+  const layerName = 'Spain Zoning';
+
+  try {
+    const result = await getSpanishZoningForPoint(lng, lat);
+
+    if (!result || !result.label) {
+      return {
+        layerId,
+        layerName,
+        found: false,
+        data: result ? {
+          ccaa: result.ccaa,
+          notes: result.notes,
+        } : undefined,
+      };
+    }
+
+    const zoningData: ZoningData = {
+      label: result.label,
+      typename: result.typename,
+      pickedField: result.picked_field,
+      municipality: result.ccaa, // Use autonomous community as "municipality"
+      rawProperties: result.properties,
+      source: `Spain Regional WFS (${result.ccaa})`,
+    };
+
+    // Add additional Spain-specific fields
+    const extendedData = {
+      ...zoningData,
+      ccaa: result.ccaa,
+      serviceType: result.service_type,
+      serviceUrl: result.service_url,
+      zoningQualification: result.zoning_qualification,
+      zoningQualificationCode: result.zoning_qualification_code,
+      zoningMunicipal: result.zoning_municipal,
+      zoningMunicipalCode: result.zoning_municipal_code,
+      landClassification: result.land_classification,
+      landClassificationCode: result.land_classification_code,
+      municipalityCode: result.municipality_code,
+      featureCount: result.feature_count,
+      notes: result.notes,
+    };
+
+    return {
+      layerId,
+      layerName,
+      found: true,
+      data: extendedData as unknown as Record<string, unknown>,
+    };
+  } catch (error) {
+    return {
+      layerId,
+      layerName,
+      found: false,
+      error: error instanceof Error ? error.message : 'Unknown error querying Spain zoning',
     };
   }
 }
