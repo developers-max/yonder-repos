@@ -37,7 +37,7 @@ const AX = axios.create({
 });
 
 // Autonomous Community to WFS mapping (from documentation)
-const REGIONAL_SERVICES: Record<string, { wfs?: string; type: string; notes: string }> = {
+const REGIONAL_SERVICES: Record<string, { wfs?: string; type: string; format?: string; notes: string }> = {
   "Catalunya": { 
     wfs: "https://sig.gencat.cat/ows/PLANEJAMENT/wfs",
     type: "WFS",
@@ -67,9 +67,10 @@ const REGIONAL_SERVICES: Record<string, { wfs?: string; type: string; notes: str
     notes: "Primary access via ATOM feed, not WFS"
   },
   "Comunitat Valenciana": {
-    wfs: "https://terramapas.icv.gva.es/0101_BCV05?service=WFS&request=GetCapabilities",
+    wfs: "https://terramapas.icv.gva.es/0702_Planeamiento",
     type: "WFS",
-    notes: "Base cartography 1:5,000 - Thematic planning in regional viewer"
+    format: "GML",
+    notes: "Planeamiento urbanístico - Urban planning classification and zoning"
   },
   // Add more regions as needed
 };
@@ -98,6 +99,60 @@ function normalizeRegionName(name?: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
+}
+
+/**
+ * Parse GML WFS response to GeoJSON-like features
+ * Simple regex-based parser for Valencia's GML format
+ */
+function parseGmlToFeatures(gmlText: string): Feature[] {
+  const features: Feature[] = [];
+  
+  // Match featureMember blocks
+  const memberRegex = /<gml:featureMember>([\s\S]*?)<\/gml:featureMember>/gi;
+  let memberMatch;
+  
+  while ((memberMatch = memberRegex.exec(gmlText)) !== null) {
+    const memberXml = memberMatch[1];
+    
+    // Extract properties using simple regex
+    const props: Record<string, any> = {};
+    const propRegex = /<ms:(\w+)>([^<]*)<\/ms:\1>/gi;
+    let propMatch;
+    
+    while ((propMatch = propRegex.exec(memberXml)) !== null) {
+      const [, key, value] = propMatch;
+      if (key !== "msGeometry" && value.trim()) {
+        props[key] = value.trim();
+      }
+    }
+    
+    // Extract coordinates from polygon (simplified - just get first polygon)
+    const coordRegex = /<gml:posList[^>]*>([^<]+)<\/gml:posList>/i;
+    const coordMatch = memberXml.match(coordRegex);
+    
+    let geometry: Feature["geometry"] = { type: "Point", coordinates: [0, 0] };
+    if (coordMatch) {
+      const coordPairs = coordMatch[1].trim().split(/\s+/).map(Number);
+      const coords: [number, number][] = [];
+      for (let i = 0; i < coordPairs.length; i += 2) {
+        coords.push([coordPairs[i], coordPairs[i + 1]]);
+      }
+      if (coords.length > 2) {
+        geometry = { type: "Polygon", coordinates: [coords] };
+      }
+    }
+    
+    if (Object.keys(props).length > 0) {
+      features.push({
+        type: "Feature",
+        geometry,
+        properties: props,
+      });
+    }
+  }
+  
+  return features;
 }
 
 /**
@@ -233,13 +288,20 @@ function extractZoningLabel(props: Record<string, any>) {
     "SISTEMA_URBA_PTP",       // Regional planning area (fallback)
     // Catalunya general
     "us_text", "qualificacio", "planejament",
+    // Valencia (Comunitat Valenciana)
+    "descripcio",             // Zoning description (Valencian)
+    "descripcio_val",         // Zoning description (Valencian language)
+    "zon_suelo",              // Zoning code (e.g., ZUR-NHT)
+    "clas_suelo",             // Land classification (e.g., SU, SNU)
+    "denominaci",             // Plan name/denomination
+    "dot_descri",             // Facilities description
     // General Spanish
     "clasificacion", "clasificación", "categoria", "categoría",
     "uso", "uso_suelo", "clase_suelo", "calificacion", "calificación",
     // Castilla y León
     "clasificacion_de_suelo", "categoria_de_suelo",
     // Generic
-    "nombre", "descripcion", "description", "name",
+    "nombre", "noms_mun", "descripcion", "description", "name",
   ];
   
   for (const k of candidates) {
@@ -303,6 +365,11 @@ export async function getSpanishZoningForPoint(lon: number, lat: number) {
     ],
     "Andalucía": ["DERA_g7_sistema_urbano:g07_01_Poblaciones"],
     "Castilla y León": ["lu:LandUse"],
+    "Comunitat Valenciana": [
+      "ms:Planeamiento.Clasificacion",    // Land classification with zoning
+      "ms:Planeamiento.Zonificacion",     // Zoning details
+      "ms:Planeamiento.Dotaciones"        // Facilities/dotaciones
+    ],
     // Add more as we discover them
   };
   
@@ -323,15 +390,33 @@ export async function getSpanishZoningForPoint(lon: number, lat: number) {
   
   for (const typeName of typeNames) {
     // Note: Different regions may use different CRS (Catalunya uses EPSG:25831)
-    // Request output in EPSG:4326 and specify bbox in 4326
-    const url = `${regionalService.wfs}?service=WFS&version=2.0.0&request=GetFeature&typeNames=${typeName}&bbox=${minx},${miny},${maxx},${maxy},EPSG:4326&srsName=EPSG:4326&outputFormat=application/json&count=20`;
+    // Some regions (Valencia) only support GML, not JSON
+    const isGmlOnly = regionalService.format === "GML";
+    const outputFormat = isGmlOnly ? "GML3" : "application/json";
+    const wfsVersion = isGmlOnly ? "1.1.0" : "2.0.0";
+    const bboxParam = isGmlOnly 
+      ? `${miny},${minx},${maxy},${maxx},EPSG:4326`  // WFS 1.1.0 uses lat,lon order
+      : `${minx},${miny},${maxx},${maxy},EPSG:4326`;
+    
+    const url = `${regionalService.wfs}?service=WFS&version=${wfsVersion}&request=GetFeature&typeName${wfsVersion === "1.1.0" ? "" : "s"}=${typeName}&bbox=${bboxParam}&srsName=EPSG:4326&outputFormat=${outputFormat}&${wfsVersion === "1.1.0" ? "maxFeatures" : "count"}=20`;
     
     try {
-      const fc = await getJSON<FeatureCollection>(url);
-      if (fc?.features?.length > 0) {
-        feats = fc.features;
-        usedTypeName = typeName;
-        break;
+      if (isGmlOnly) {
+        // Parse GML response
+        const { data: gmlText } = await AX.get(url, { responseType: "text" });
+        const parsed = parseGmlToFeatures(gmlText);
+        if (parsed.length > 0) {
+          feats = parsed;
+          usedTypeName = typeName;
+          break;
+        }
+      } else {
+        const fc = await getJSON<FeatureCollection>(url);
+        if (fc?.features?.length > 0) {
+          feats = fc.features;
+          usedTypeName = typeName;
+          break;
+        }
       }
     } catch (e) {
       // Try next typename
@@ -368,12 +453,22 @@ export async function getSpanishZoningForPoint(lon: number, lat: number) {
   
   // Build comprehensive zoning label with all available info
   const zoningParts: string[] = [];
+  
+  // Catalunya fields
   if (props.DESC_QUAL_MUC) zoningParts.push(props.DESC_QUAL_MUC);
   if (props.DESC_QUAL_AJUNT && props.DESC_QUAL_AJUNT !== props.DESC_QUAL_MUC) {
     zoningParts.push(props.DESC_QUAL_AJUNT);
   }
   if (props.DESC_CLAS_MUC && !zoningParts.includes(props.DESC_CLAS_MUC)) {
     zoningParts.push(props.DESC_CLAS_MUC);
+  }
+  
+  // Valencia fields
+  if (props.descripcio && !zoningParts.includes(props.descripcio)) {
+    zoningParts.push(props.descripcio);
+  }
+  if (props.zon_suelo && !zoningParts.includes(props.zon_suelo)) {
+    zoningParts.push(`[${props.zon_suelo}]`);
   }
   
   const comprehensiveLabel = zoningParts.length > 0 ? zoningParts.join(' | ') : label;
@@ -387,14 +482,14 @@ export async function getSpanishZoningForPoint(lon: number, lat: number) {
     feature_count: feats.length,
     label: comprehensiveLabel,
     
-    // Individual zoning fields
-    zoning_qualification: props.DESC_QUAL_MUC || null,
-    zoning_qualification_code: props.CODI_QUAL_MUC || null,
-    zoning_municipal: props.DESC_QUAL_AJUNT || null,
+    // Individual zoning fields (Catalunya)
+    zoning_qualification: props.DESC_QUAL_MUC || props.descripcio || null,
+    zoning_qualification_code: props.CODI_QUAL_MUC || props.zon_suelo || null,
+    zoning_municipal: props.DESC_QUAL_AJUNT || props.denominaci || null,
     zoning_municipal_code: props.CODI_QUAL_AJUNT || null,
-    land_classification: props.DESC_CLAS_MUC || null,
+    land_classification: props.DESC_CLAS_MUC || props.clas_suelo || null,
     land_classification_code: props.CODI_CLAS_MUC || null,
-    municipality_code: props.CODI_INE || null,
+    municipality_code: props.CODI_INE || props.cod_ine_mun || null,
     
     picked_field: pickedField,
     properties: best.properties,

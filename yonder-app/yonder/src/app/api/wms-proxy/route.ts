@@ -127,12 +127,18 @@ export async function GET(request: NextRequest) {
 
       // Check if the response is actually an image (some WMS servers return XML errors with 200)
       if (!contentType.includes('image/')) {
-        console.error(`WMS proxy: unexpected content-type ${contentType} for ${wmsUrl}`);
+        // REN/RAN services return XML when no data is available in the area - this is expected
+        const isRenRanService = source === 'pt-ren' || source === 'pt-ran';
+        if (!isRenRanService) {
+          // Only log for non-REN/RAN services where this is unexpected
+          console.error(`WMS proxy: unexpected content-type ${contentType} for ${wmsUrl}`);
+        }
+        // Return transparent pixel with longer cache for REN/RAN (indicates no data in area)
         return new NextResponse(TRANSPARENT_PIXEL, {
           status: 200,
           headers: {
             'Content-Type': 'image/png',
-            'Cache-Control': 'public, max-age=60',
+            'Cache-Control': isRenRanService ? 'public, max-age=86400' : 'public, max-age=60',
             'Access-Control-Allow-Origin': '*',
           },
         });

@@ -247,6 +247,94 @@ export const ES_WMS_LAYERS: Record<string, WMSLayerConfig> = {
     country: 'ES',
     unreliable: true, // Mark as potentially intermittent
   },
+
+  // =============================================================================
+  // Spain National Land Use (IDEE/SIOSE)
+  // =============================================================================
+  // National land use/land cover data from IGN - covers all of Spain
+  // =============================================================================
+
+  // National Land Use (SIOSE/CLC) - All Spain
+  landUseSpain: {
+    id: 'landUseSpain',
+    name: 'Usos del Suelo (Nacional)',
+    shortName: 'Land Use',
+    description: 'National land use data (SIOSE/CLC) - All Spain',
+    url: 'https://servicios.idee.es/wms-inspire/ocupacion-suelo?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=LU.ExistingLandUse&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    layers: 'LU.ExistingLandUse',
+    opacity: 0.5,
+    color: '#84cc16', // Lime
+    provider: 'IGN/IDEE',
+    country: 'ES',
+    legendUrl: 'https://servicios.idee.es/wms-inspire/ocupacion-suelo?request=GetLegendGraphic&format=image/png&layer=LU.ExistingLandUse&width=25&height=25',
+  },
+
+  // =============================================================================
+  // Spain Zoning Layers (Regional)
+  // =============================================================================
+  // Spain has decentralized zoning - each Autonomous Community has its own service.
+  // Currently Catalunya (MUC - Mapa Urbanístic de Catalunya) is supported.
+  // =============================================================================
+
+  // Catalunya - Zoning Qualifications (MUC)
+  zoningCatalunya: {
+    id: 'zoningCatalunya',
+    name: 'Zonificació Catalunya (MUC)',
+    shortName: 'Zoning (CAT)',
+    description: 'Urban zoning qualifications - Catalunya only',
+    url: 'https://sig.gencat.cat/ows/PLANEJAMENT/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=MUC_QUALIFICACIONS&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    layers: 'MUC_QUALIFICACIONS',
+    opacity: 0.6,
+    color: '#8b5cf6', // Purple
+    provider: 'Generalitat de Catalunya',
+    country: 'ES',
+    legendUrl: 'https://sig.gencat.cat/ows/PLANEJAMENT/wms?request=GetLegendGraphic&format=image/png&layer=MUC_QUALIFICACIONS&width=25&height=25',
+  },
+
+  // Catalunya - Land Classification (Urban/Rustic)
+  landClassCatalunya: {
+    id: 'landClassCatalunya',
+    name: 'Classificació Sòl Catalunya',
+    shortName: 'Land Class (CAT)',
+    description: 'Land classification (urban/rustic) - Catalunya only',
+    url: 'https://sig.gencat.cat/ows/PLANEJAMENT/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=MUC_CLASSIFICACIONS&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    layers: 'MUC_CLASSIFICACIONS',
+    opacity: 0.5,
+    color: '#22c55e', // Green
+    provider: 'Generalitat de Catalunya',
+    country: 'ES',
+    legendUrl: 'https://sig.gencat.cat/ows/PLANEJAMENT/wms?request=GetLegendGraphic&format=image/png&layer=MUC_CLASSIFICACIONS&width=25&height=25',
+  },
+
+  // Andalucía - Urban System (DERA)
+  urbanAndalucia: {
+    id: 'urbanAndalucia',
+    name: 'Sistema Urbano Andalucía',
+    shortName: 'Urban (AND)',
+    description: 'Urban areas and settlements - Andalucía only',
+    url: 'https://www.ideandalucia.es/services/DERA_g7_sistema_urbano/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=g07_01_Poblaciones&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    layers: 'g07_01_Poblaciones',
+    opacity: 0.6,
+    color: '#ef4444', // Red
+    provider: 'Junta de Andalucía',
+    country: 'ES',
+    legendUrl: 'https://www.ideandalucia.es/services/DERA_g7_sistema_urbano/wms?request=GetLegendGraphic&format=image/png&layer=g07_01_Poblaciones&width=25&height=25',
+  },
+
+  // Comunitat Valenciana - Urban Environments
+  urbanValencia: {
+    id: 'urbanValencia',
+    name: 'Entornos Urbanos Valencia',
+    shortName: 'Urban (VAL)',
+    description: 'Urban environments - Comunitat Valenciana only',
+    url: 'https://terramapas.icv.gva.es/0101_BCV05?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=EntornosUrbanosBCV05&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    layers: 'EntornosUrbanosBCV05',
+    opacity: 0.6,
+    color: '#f97316', // Orange
+    provider: 'Generalitat Valenciana',
+    country: 'ES',
+    legendUrl: 'https://terramapas.icv.gva.es/0101_BCV05?request=GetLegendGraphic&format=image/png&layer=EntornosUrbanosBCV05&width=25&height=25',
+  },
 };
 
 // Combined layers by country
