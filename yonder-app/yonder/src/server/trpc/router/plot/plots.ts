@@ -492,6 +492,8 @@ export const plotsRouter = router({
     }),
 
   // Extract general zoning rules from municipality PDM summary using LLM
+  // Implements permanent server-side caching in database (no expiry)
+  // Cache is only invalidated when PDM/regulation file is updated
   extractGeneralZoningFromMunicipality: publicProcedure
     .input(z.object({
       municipalityId: z.number()
@@ -499,10 +501,13 @@ export const plotsRouter = router({
     .output(GeneralZoningRulesSchema)
     .query(async ({ input }) => {
       try {
-        // Query regulations table for this municipality's summary
+        // Query regulations table for this municipality's summary and cached data
         const regulation = await db
           .select({
+            id: regulations.id,
             summary: regulations.summary,
+            cachedZoningRules: regulations.cachedZoningRules,
+            zoningRulesCachedAt: regulations.zoningRulesCachedAt,
           })
           .from(regulations)
           .where(eq(regulations.municipalityId, input.municipalityId))
@@ -521,8 +526,29 @@ export const plotsRouter = router({
           };
         }
 
-        // Use LLM to extract general zoning rules from regulation summary
-        const zoningRules = await extractGeneralZoningRules(regulation[0].summary);
+        const reg = regulation[0];
+
+        // Check if we have cached data (permanent cache, no expiry)
+        if (reg.cachedZoningRules) {
+          console.log(`[extractGeneralZoningFromMunicipality] Using cached data for municipality ${input.municipalityId}`);
+          return reg.cachedZoningRules as z.infer<typeof GeneralZoningRulesSchema>;
+        }
+
+        // Cache miss - use LLM to extract general zoning rules
+        console.log(`[extractGeneralZoningFromMunicipality] No cache found, calling LLM for municipality ${input.municipalityId}`);
+        const zoningRules = await extractGeneralZoningRules(reg.summary!);
+
+        // Store the result in permanent cache
+        await db
+          .update(regulations)
+          .set({
+            cachedZoningRules: zoningRules as any,
+            zoningRulesCachedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(regulations.id, reg.id));
+
+        console.log(`[extractGeneralZoningFromMunicipality] Cached zoning rules for municipality ${input.municipalityId}`);
         return zoningRules;
       } catch (error) {
         console.error('[extractGeneralZoningFromMunicipality] Error:', error);

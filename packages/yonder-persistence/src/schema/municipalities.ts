@@ -131,6 +131,8 @@ export const regulations = pgTable(
     docUrl: text("doc_url").notNull(),
     summary: text("summary"),
     regulation: jsonb("regulation").notNull(),
+    cachedZoningRules: jsonb("cached_zoning_rules"),
+    zoningRulesCachedAt: timestamp("zoning_rules_cached_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
