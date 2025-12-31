@@ -19,11 +19,12 @@ export async function extractGeneralZoningRules(
 ): Promise<GeneralZoningRules> {
   try {
     const result = await generateObject({
-      model: openai('gpt-4o-mini'),
+      model: openai('gpt-5-nano'),
       schema: GeneralZoningRulesSchema,
-      prompt: `You are an expert in Portuguese and Spanish urban planning regulations (PDM/POUM documents).
+      prompt: `You are an expert in urban planning regulations across European countries, with deep knowledge of Portuguese and Spanish PDM/POUM documents.
 
-Extract general, municipality-level zoning rules from the following PDM document summary. These should be GENERAL rules that apply across the municipality, NOT parcel-specific regulations.
+Extract general, municipality-level zoning rules from the following urban planning and regulation document summary. 
+These should be GENERAL rules that apply across the municipality, NOT parcel-specific regulations.
 
 Focus on extracting:
 1. Area Classification: The general land use zones or classifications in the municipality
@@ -35,7 +36,6 @@ Focus on extracting:
 7. Additional Notes: Other important general zoning information
 
 For Future Plans and Key Points, extract up to 5 distinct items each. Be concise and factual.
-If information is not clearly stated in the summary, return null for that field.
 
 PDM Summary (English version):
 ${pdmSummary}

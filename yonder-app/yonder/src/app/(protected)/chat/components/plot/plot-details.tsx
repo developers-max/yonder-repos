@@ -39,6 +39,8 @@ import {
   Maximize2,
   ArrowUpCircle,
   Palette,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import type { EnrichmentData } from '@/server/trpc/router/plot/plots';
 import PlotDetailsOverview from './plot-details-overview';
@@ -192,6 +194,20 @@ export default function PlotDetails({
       staleTime: 1000 * 60 * 60 * 24, // Cache for 24 hours
     }
   );
+
+  // Accordion state for zoning sections
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) {
+        newSet.delete(section);
+      } else {
+        newSet.add(section);
+      }
+      return newSet;
+    });
+  };
 
   const handleShare = async () => {
     const shareUrl = `${window.location.origin}/plot/${plotId}`;
@@ -673,171 +689,281 @@ export default function PlotDetails({
                     );
                   })()}
 
-                  {/* General Zoning Rules Card */}
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 md:p-6 border border-blue-100 shadow-sm">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-start gap-2">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                          <Map className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900 text-base md:text-lg">General Zoning Rules</h3>
-                          <p className="text-xs text-gray-600 mt-0.5">Typical rules for this area - not parcel-specific</p>
+                  {/* General Zoning Rules Card - Redesigned Accordion */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border-b border-gray-200">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-blue-100 rounded-lg">
+                            <Map className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900 text-base">General Zoning Rules</h3>
+                            <p className="text-xs text-gray-600 mt-0.5">Municipality-level regulations for this area</p>
+                          </div>
                         </div>
                       </div>
-                      <span className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-full">Municipality-level</span>
                     </div>
                     
                     {generalZoningLoading ? (
-                      <div className="flex flex-col items-center justify-center py-8 bg-white rounded-lg border-2 border-dashed border-blue-200">
-                        <Sparkles className="w-6 h-6 animate-pulse text-blue-500 mb-2" />
-                        <span className="text-sm font-medium text-gray-700">Extracting general zoning rules from PDM...</span>
-                        <span className="text-xs text-gray-500 mt-1">Using AI to analyze municipality regulations</span>
+                      <div className="flex flex-col items-center justify-center py-12 px-4">
+                        <Sparkles className="w-8 h-8 animate-pulse text-blue-500 mb-3" />
+                        <span className="text-sm font-medium text-gray-700">Extracting zoning rules...</span>
+                        <span className="text-xs text-gray-500 mt-1">Analyzing municipality regulations with AI</span>
                       </div>
                     ) : generalZoning && (generalZoning.areaClassification || generalZoning.typicalPlotSize || generalZoning.generalHeightLimit || generalZoning.buildingStyle) ? (
-                      <>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                          {/* Area Classification */}
-                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 mb-3">
-                              <div className="p-1.5 bg-green-100 rounded-md">
-                                <Map className="w-4 h-4 text-green-600" />
-                              </div>
-                              <div className="text-xs font-medium text-gray-600">Area Classification</div>
-                            </div>
-                            {generalZoning.areaClassification ? (
-                              <ul className="space-y-1.5 text-sm text-gray-900">
-                                {generalZoning.areaClassification.split(/[,;]/).map((item, idx) => (
-                                  <li key={idx} className="flex items-start gap-2">
-                                    <span className="text-green-600 mt-0.5 flex-shrink-0">•</span>
-                                    <span className="leading-tight">{item.trim()}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="text-sm text-gray-400">N/A</div>
-                            )}
-                          </div>
-
-                          {/* Typical Plot Size */}
-                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 mb-3">
-                              <div className="p-1.5 bg-purple-100 rounded-md">
-                                <Maximize2 className="w-4 h-4 text-purple-600" />
-                              </div>
-                              <div className="text-xs font-medium text-gray-600">Typical Plot Size</div>
-                            </div>
-                            {generalZoning.typicalPlotSize ? (
-                              <ul className="space-y-1.5 text-sm text-gray-900">
-                                {generalZoning.typicalPlotSize.split(/[;]/).map((item, idx) => (
-                                  <li key={idx} className="flex items-start gap-2">
-                                    <span className="text-purple-600 mt-0.5 flex-shrink-0">•</span>
-                                    <span className="leading-tight">{item.trim()}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="text-sm text-gray-400">N/A</div>
-                            )}
-                          </div>
-
-                          {/* General Height Limit */}
-                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 mb-3">
-                              <div className="p-1.5 bg-orange-100 rounded-md">
-                                <ArrowUpCircle className="w-4 h-4 text-orange-600" />
-                              </div>
-                              <div className="text-xs font-medium text-gray-600">General Height Limit</div>
-                            </div>
-                            {generalZoning.generalHeightLimit ? (
-                              <ul className="space-y-1.5 text-sm text-gray-900">
-                                {generalZoning.generalHeightLimit.split(/[;]/).map((item, idx) => (
-                                  <li key={idx} className="flex items-start gap-2">
-                                    <span className="text-orange-600 mt-0.5 flex-shrink-0">•</span>
-                                    <span className="leading-tight">{item.trim()}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="text-sm text-gray-400">N/A</div>
-                            )}
-                          </div>
-
-                          {/* Building Style */}
-                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 mb-3">
-                              <div className="p-1.5 bg-pink-100 rounded-md">
-                                <Palette className="w-4 h-4 text-pink-600" />
-                              </div>
-                              <div className="text-xs font-medium text-gray-600">Building Style</div>
-                            </div>
-                            {generalZoning.buildingStyle ? (
-                              <ul className="space-y-1.5 text-sm text-gray-900">
-                                {generalZoning.buildingStyle.split(/[;]/).map((item, idx) => (
-                                  <li key={idx} className="flex items-start gap-2">
-                                    <span className="text-pink-600 mt-0.5 flex-shrink-0">•</span>
-                                    <span className="leading-tight">{item.trim()}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="text-sm text-gray-400">N/A</div>
-                            )}
-                          </div>
+                      <div className="divide-y divide-gray-100">
+                        {/* Summary Paragraph - Always Visible */}
+                        <div className="p-4 bg-gray-50">
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {(() => {
+                              const parts: string[] = [];
+                              
+                              if (generalZoning.areaClassification) {
+                                const zones = generalZoning.areaClassification.split(/[,;]/).map(z => z.trim());
+                                parts.push(`This municipality includes ${zones.length} zone type${zones.length > 1 ? 's' : ''} such as ${zones.slice(0, 3).join(', ')}${zones.length > 3 ? ', and others' : ''}.`);
+                              }
+                              
+                              if (generalZoning.typicalPlotSize || generalZoning.generalHeightLimit) {
+                                const regulations: string[] = [];
+                                if (generalZoning.typicalPlotSize) {
+                                  regulations.push(`plot sizes ${generalZoning.typicalPlotSize.split(/[;]/)[0].trim().toLowerCase()}`);
+                                }
+                                if (generalZoning.generalHeightLimit) {
+                                  regulations.push(`height limits ${generalZoning.generalHeightLimit.split(/[;]/)[0].trim().toLowerCase()}`);
+                                }
+                                parts.push(`Typical regulations include ${regulations.join(' and ')}.`);
+                              }
+                              
+                              if (generalZoning.buildingStyle) {
+                                parts.push(`Building style requirements emphasize ${generalZoning.buildingStyle.split(/[;]/)[0].trim().toLowerCase()}.`);
+                              }
+                              
+                              return parts.join(' ');
+                            })()}
+                          </p>
                         </div>
 
-                        {(generalZoning.futurePlans || generalZoning.keyPoints || generalZoning.additionalNotes) && (
-                          <div className="mt-4 bg-white/80 backdrop-blur rounded-lg p-5 border border-blue-200 space-y-4">
-                            <div className="flex items-center gap-2 pb-2 border-b border-blue-100">
-                              <Info className="w-5 h-5 text-blue-600" />
-                              <h4 className="font-semibold text-gray-900 text-sm">Additional Information</h4>
+                        {/* Accordion Sections */}
+                        <div>
+                          {/* Area Classification */}
+                          {generalZoning.areaClassification && (
+                            <div className="border-b border-gray-100 last:border-0">
+                              <button
+                                onClick={() => toggleSection('areaClassification')}
+                                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 bg-green-100 rounded-md group-hover:bg-green-200 transition-colors">
+                                    <Map className="w-4 h-4 text-green-600" />
+                                  </div>
+                                  <span className="font-medium text-gray-900 text-sm">Area Classification</span>
+                                  <span className="text-xs text-gray-500">({generalZoning.areaClassification.split(/[,;]/).length} zones)</span>
+                                </div>
+                                {expandedSections.has('areaClassification') ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                                )}
+                              </button>
+                              {expandedSections.has('areaClassification') && (
+                                <div className="px-4 pb-4 pt-2">
+                                  <ul className="space-y-2 ml-11">
+                                    {generalZoning.areaClassification.split(/[,;]/).map((item, idx) => (
+                                      <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                        <span className="text-green-600 mt-1">•</span>
+                                        <span className="leading-relaxed">{item.trim()}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
                             </div>
+                          )}
 
-                            {/* Future Plans */}
-                            {generalZoning.futurePlans && generalZoning.futurePlans.length > 0 && (
-                              <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <TrendingUp className="w-4 h-4 text-blue-600" />
-                                  <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Future Plans</h5>
+                          {/* Typical Plot Size */}
+                          {generalZoning.typicalPlotSize && (
+                            <div className="border-b border-gray-100 last:border-0">
+                              <button
+                                onClick={() => toggleSection('plotSize')}
+                                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 bg-purple-100 rounded-md group-hover:bg-purple-200 transition-colors">
+                                    <Maximize2 className="w-4 h-4 text-purple-600" />
+                                  </div>
+                                  <span className="font-medium text-gray-900 text-sm">Typical Plot Size</span>
                                 </div>
-                                <ul className="space-y-2">
-                                  {generalZoning.futurePlans.map((plan, idx) => (
-                                    <li key={idx} className="flex items-start gap-2.5 text-sm text-gray-700">
-                                      <span className="text-blue-500 mt-0.5 flex-shrink-0">▸</span>
-                                      <span className="leading-relaxed">{plan}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-
-                            {/* Key Points */}
-                            {generalZoning.keyPoints && generalZoning.keyPoints.length > 0 && (
-                              <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                                  <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Key Points</h5>
+                                {expandedSections.has('plotSize') ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                                )}
+                              </button>
+                              {expandedSections.has('plotSize') && (
+                                <div className="px-4 pb-4 pt-2">
+                                  <ul className="space-y-2 ml-11">
+                                    {generalZoning.typicalPlotSize.split(/[;]/).map((item, idx) => (
+                                      <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                        <span className="text-purple-600 mt-1">•</span>
+                                        <span className="leading-relaxed">{item.trim()}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
-                                <ul className="space-y-2">
-                                  {generalZoning.keyPoints.map((point, idx) => (
-                                    <li key={idx} className="flex items-start gap-2.5 text-sm text-gray-700">
-                                      <span className="text-amber-500 mt-0.5 flex-shrink-0">▸</span>
-                                      <span className="leading-relaxed">{point}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
+                              )}
+                            </div>
+                          )}
 
-                            {/* General Notes */}
-                            {generalZoning.additionalNotes && (
-                              <div className="pt-2 border-t border-gray-100">
-                                <p className="text-xs text-gray-600 leading-relaxed italic">{generalZoning.additionalNotes}</p>
-                              </div>
-                            )}
+                          {/* General Height Limit */}
+                          {generalZoning.generalHeightLimit && (
+                            <div className="border-b border-gray-100 last:border-0">
+                              <button
+                                onClick={() => toggleSection('heightLimit')}
+                                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 bg-orange-100 rounded-md group-hover:bg-orange-200 transition-colors">
+                                    <ArrowUpCircle className="w-4 h-4 text-orange-600" />
+                                  </div>
+                                  <span className="font-medium text-gray-900 text-sm">General Height Limit</span>
+                                </div>
+                                {expandedSections.has('heightLimit') ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                                )}
+                              </button>
+                              {expandedSections.has('heightLimit') && (
+                                <div className="px-4 pb-4 pt-2">
+                                  <ul className="space-y-2 ml-11">
+                                    {generalZoning.generalHeightLimit.split(/[;]/).map((item, idx) => (
+                                      <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                        <span className="text-orange-600 mt-1">•</span>
+                                        <span className="leading-relaxed">{item.trim()}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Building Style */}
+                          {generalZoning.buildingStyle && (
+                            <div className="border-b border-gray-100 last:border-0">
+                              <button
+                                onClick={() => toggleSection('buildingStyle')}
+                                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 bg-pink-100 rounded-md group-hover:bg-pink-200 transition-colors">
+                                    <Palette className="w-4 h-4 text-pink-600" />
+                                  </div>
+                                  <span className="font-medium text-gray-900 text-sm">Building Style</span>
+                                </div>
+                                {expandedSections.has('buildingStyle') ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                                )}
+                              </button>
+                              {expandedSections.has('buildingStyle') && (
+                                <div className="px-4 pb-4 pt-2">
+                                  <ul className="space-y-2 ml-11">
+                                    {generalZoning.buildingStyle.split(/[;]/).map((item, idx) => (
+                                      <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                        <span className="text-pink-600 mt-1">•</span>
+                                        <span className="leading-relaxed">{item.trim()}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Future Plans */}
+                          {generalZoning.futurePlans && generalZoning.futurePlans.length > 0 && (
+                            <div className="border-b border-gray-100 last:border-0">
+                              <button
+                                onClick={() => toggleSection('futurePlans')}
+                                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 bg-blue-100 rounded-md group-hover:bg-blue-200 transition-colors">
+                                    <TrendingUp className="w-4 h-4 text-blue-600" />
+                                  </div>
+                                  <span className="font-medium text-gray-900 text-sm">Future Development Plans</span>
+                                  <span className="text-xs text-gray-500">({generalZoning.futurePlans.length})</span>
+                                </div>
+                                {expandedSections.has('futurePlans') ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                                )}
+                              </button>
+                              {expandedSections.has('futurePlans') && (
+                                <div className="px-4 pb-4 pt-2">
+                                  <ul className="space-y-2.5 ml-11">
+                                    {generalZoning.futurePlans.map((plan, idx) => (
+                                      <li key={idx} className="flex items-start gap-2.5 text-sm text-gray-700">
+                                        <span className="text-blue-500 mt-1">▸</span>
+                                        <span className="leading-relaxed">{plan}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Key Points */}
+                          {generalZoning.keyPoints && generalZoning.keyPoints.length > 0 && (
+                            <div className="border-b border-gray-100 last:border-0">
+                              <button
+                                onClick={() => toggleSection('keyPoints')}
+                                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 bg-amber-100 rounded-md group-hover:bg-amber-200 transition-colors">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                  </div>
+                                  <span className="font-medium text-gray-900 text-sm">Important Considerations</span>
+                                  <span className="text-xs text-gray-500">({generalZoning.keyPoints.length})</span>
+                                </div>
+                                {expandedSections.has('keyPoints') ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                                )}
+                              </button>
+                              {expandedSections.has('keyPoints') && (
+                                <div className="px-4 pb-4 pt-2">
+                                  <ul className="space-y-2.5 ml-11">
+                                    {generalZoning.keyPoints.map((point, idx) => (
+                                      <li key={idx} className="flex items-start gap-2.5 text-sm text-gray-700">
+                                        <span className="text-amber-500 mt-1">▸</span>
+                                        <span className="leading-relaxed">{point}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Additional Notes Footer */}
+                        {generalZoning.additionalNotes && (
+                          <div className="p-4 bg-blue-50/50 border-t border-blue-100">
+                            <div className="flex items-start gap-2">
+                              <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                              <p className="text-xs text-gray-600 leading-relaxed italic">{generalZoning.additionalNotes}</p>
+                            </div>
                           </div>
                         )}
-                      </>
+                      </div>
                     ) : (
                       <>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
