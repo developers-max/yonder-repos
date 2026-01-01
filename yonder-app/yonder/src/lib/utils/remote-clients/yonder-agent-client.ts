@@ -361,6 +361,25 @@ export interface PDMProcessResponse {
   ready_for_queries: boolean;
 }
 
+// PDM Refresh types
+export interface PDMRefreshRequest {
+  municipality_id: number;
+  max_iterations?: number;
+  confidence_threshold?: number;
+}
+
+export interface PDMRefreshResponse {
+  municipality_id: number;
+  municipality_name: string;
+  best_pdm_url: string | null;
+  confidence_score: number;
+  iterations: number;
+  pdm_urls: string[];
+  database_updated: boolean;
+  execution_time: number;
+  error: string | null;
+}
+
 /**
  * Process a PDM document for RAG/LLM integration
  * Converts PDF to JSON and generates embeddings for vector search
@@ -424,6 +443,75 @@ export async function processPdmDocument(request: PDMProcessRequest): Promise<PD
     if (error instanceof Error && error.name === 'AbortError') {
       console.error('[yonder-agent-client] ❌ PDM processing timeout after', `${PDM_PROCESS_TIMEOUT_MS / 1000}s`);
       throw new Error(`PDM processing timed out after ${PDM_PROCESS_TIMEOUT_MS / 1000} seconds. The document may be large or the service is slow.`);
+    }
+    
+    // Re-throw other errors
+    throw error;
+  }
+}
+
+/**
+ * Refresh PDM URL for a municipality using the PDM Scraper API
+ * Discovers and updates the PDM document URL for a municipality
+ */
+export async function refreshPdmUrl(request: PDMRefreshRequest): Promise<PDMRefreshResponse> {
+  const url = `${AGENT_API_URL}/api/v1/pdm/refresh`;
+  console.log('[yonder-agent-client] Refreshing PDM URL:', url);
+  console.log('[yonder-agent-client] Municipality ID:', request.municipality_id);
+  console.log('[yonder-agent-client] Max iterations:', request.max_iterations || 3);
+  console.log('[yonder-agent-client] Confidence threshold:', request.confidence_threshold || 0.80);
+  
+  const headers = await getGCloudAuthHeaders(
+    AGENT_API_URL,
+    'yonder-agent',
+    {
+      'Content-Type': 'application/json',
+    }
+  );
+  
+  // Create abort controller for timeout (PDM refresh can take up to 2 minutes)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        municipality_id: request.municipality_id,
+        max_iterations: request.max_iterations || 3,
+        confidence_threshold: request.confidence_threshold || 0.80,
+      }),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error('[yonder-agent-client] ❌ PDM Refresh API Error:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('[yonder-agent-client] Response:', errorText);
+      
+      let errorMessage = `Failed to refresh PDM URL (${response.status})`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || errorJson.message || errorMessage;
+      } catch {
+        // Response is not JSON
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    console.log('[yonder-agent-client] ✅ PDM URL refreshed successfully');
+    return response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    // Handle abort/timeout errors
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('[yonder-agent-client] ❌ PDM refresh timeout after 120s');
+      throw new Error(`PDM refresh timed out after 120 seconds. The municipality may not have a PDM available or the service is slow.`);
     }
     
     // Re-throw other errors

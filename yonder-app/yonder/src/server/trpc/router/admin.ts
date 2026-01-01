@@ -1233,4 +1233,42 @@ export const adminRouter = router({
         throw new Error(`Failed to process PDM document: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }),
+
+  refreshMunicipalityPdm: protectedProcedure
+    .input(
+      z.object({
+        municipalityId: z.number(),
+        maxIterations: z.number().optional().default(3),
+        confidenceThreshold: z.number().optional().default(0.80),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { refreshPdmUrl } = await import('../../../lib/utils/remote-clients/yonder-agent-client');
+      
+      try {
+        const result = await refreshPdmUrl({
+          municipality_id: input.municipalityId,
+          max_iterations: input.maxIterations,
+          confidence_threshold: input.confidenceThreshold,
+        });
+        
+        return {
+          success: result.database_updated,
+          municipalityId: result.municipality_id,
+          municipalityName: result.municipality_name,
+          bestPdmUrl: result.best_pdm_url,
+          confidenceScore: result.confidence_score,
+          iterations: result.iterations,
+          pdmUrls: result.pdm_urls,
+          databaseUpdated: result.database_updated,
+          executionTime: result.execution_time,
+          error: result.error,
+        };
+      } catch (error) {
+        console.error('Error refreshing PDM URL:', error);
+        throw new Error(`Failed to refresh PDM URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }),
 });

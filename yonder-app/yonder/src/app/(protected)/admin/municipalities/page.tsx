@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/_components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/_components/ui/dialog';
 import { Label } from '@/app/_components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/app/_components/ui/tooltip';
 import { 
   Loader2, 
   Landmark, 
@@ -22,7 +23,9 @@ import {
   Pencil,
   Cpu,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  RefreshCw,
+  Bot
 } from 'lucide-react';
 
 type PDMDocument = {
@@ -62,7 +65,27 @@ export default function AdminMunicipalitiesPage() {
   const [processForRag, setProcessForRag] = useState(true);
   const [processingStatus, setProcessingStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [processingMessage, setProcessingMessage] = useState('');
+  const [refreshingMunicipalityId, setRefreshingMunicipalityId] = useState<number | null>(null);
+  const [refreshProgress, setRefreshProgress] = useState<{[key: number]: {status: 'idle' | 'refreshing' | 'success' | 'error', message?: string}}>({});
+  const [selectedMunicipalities, setSelectedMunicipalities] = useState<Set<number>>(new Set());
+  const [batchRefreshing, setBatchRefreshing] = useState(false);
   const limit = 20;
+
+  // Scraping configuration modal state
+  const [scrapingConfigOpen, setScrapingConfigOpen] = useState(false);
+  const [scrapingMunicipality, setScrapingMunicipality] = useState<Municipality | null>(null);
+  const [scrapingMaxIterations, setScrapingMaxIterations] = useState(3);
+  const [scrapingConfidenceThreshold, setScrapingConfidenceThreshold] = useState(0.80);
+  const [scrapingProcessForRag, setScrapingProcessForRag] = useState(false);
+  const [scrapingInProgress, setScrapingInProgress] = useState(false);
+  const [scrapingResult, setScrapingResult] = useState<{
+    status: 'idle' | 'success' | 'error';
+    message?: string;
+    url?: string;
+    confidence?: number;
+  }>({ status: 'idle' });
+
+  const refreshPdmMutation = trpc.admin.refreshMunicipalityPdm.useMutation();
 
   const { data: countries } = trpc.admin.getMunicipalityCountries.useQuery();
   
@@ -112,34 +135,104 @@ export default function AdminMunicipalitiesPage() {
   const municipalities = data?.municipalities || [];
   const pagination = data?.pagination;
 
-  function resetForm() {
+  const resetForm = () => {
+    setDialogOpen(false);
+    setSelectedMunicipality(null);
+    setEditingDocId(null);
     setNewDocTitle('');
     setNewDocUrl('');
     setNewDocDescription('');
-    setEditingDocId(null);
     setProcessForRag(true);
     setProcessingStatus('idle');
     setProcessingMessage('');
-    setDialogOpen(false);
-    setSelectedMunicipality(null);
-  }
+  };
 
-  function openAddDocDialog(municipality: Municipality) {
+  const openAddDocDialog = (municipality: Municipality) => {
     setEditingDocId(null);
     setNewDocTitle('');
     setNewDocUrl('');
-    setNewDocDescription('');
     setSelectedMunicipality(municipality);
     setDialogOpen(true);
-  }
+  };
 
-  function openEditDocDialog(municipality: Municipality, doc: PDMDocument) {
+  const openEditDocDialog = (municipality: Municipality, doc: PDMDocument) => {
+    setSelectedMunicipality(municipality);
     setEditingDocId(doc.id);
     setNewDocTitle(doc.title);
     setNewDocUrl(doc.url);
     setNewDocDescription(doc.description || '');
-    setSelectedMunicipality(municipality);
     setDialogOpen(true);
+  };
+
+  const openScrapingConfigModal = (municipality: Municipality) => {
+    setScrapingMunicipality(municipality);
+    setScrapingMaxIterations(3);
+    setScrapingConfidenceThreshold(0.80);
+    setScrapingProcessForRag(false);
+    setScrapingResult({ status: 'idle' });
+    setScrapingConfigOpen(true);
+  };
+
+  const resetScrapingConfig = () => {
+    setScrapingConfigOpen(false);
+    setScrapingMunicipality(null);
+    setScrapingMaxIterations(3);
+    setScrapingConfidenceThreshold(0.80);
+    setScrapingProcessForRag(false);
+    setScrapingInProgress(false);
+    setScrapingResult({ status: 'idle' });
+  };
+
+  async function executeScrapingWithConfig() {
+    if (!scrapingMunicipality) return;
+    
+    setScrapingInProgress(true);
+    setScrapingResult({ status: 'idle' });
+    
+    try {
+      const result = await refreshPdmMutation.mutateAsync({
+        municipalityId: scrapingMunicipality.id,
+        maxIterations: scrapingMaxIterations,
+        confidenceThreshold: scrapingConfidenceThreshold
+      });
+      
+      if (result.databaseUpdated && result.bestPdmUrl) {
+        setScrapingResult({
+          status: 'success',
+          message: `Found PDM with ${(result.confidenceScore * 100).toFixed(0)}% confidence`,
+          url: result.bestPdmUrl,
+          confidence: result.confidenceScore
+        });
+        
+        // Trigger RAG processing if enabled
+        if (scrapingProcessForRag) {
+          setProcessingStatus('processing');
+          setProcessingMessage('Processing document for RAG...');
+          
+          processPdmMutation.mutate({
+            municipalityId: scrapingMunicipality.id,
+            pdmUrl: result.bestPdmUrl,
+            forceRefresh: true,
+            generateEmbeddings: true,
+          });
+        }
+        
+        // Refresh the table
+        refetch();
+      } else {
+        setScrapingResult({
+          status: 'error',
+          message: result.error || `No PDM found with sufficient confidence (${(result.confidenceScore * 100).toFixed(0)}%)`
+        });
+      }
+    } catch (error) {
+      setScrapingResult({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Failed to scrape PDM'
+      });
+    } finally {
+      setScrapingInProgress(false);
+    }
   }
 
   function triggerRagProcessing(municipalityId: number, pdmUrl: string) {
@@ -213,6 +306,123 @@ export default function AdminMunicipalitiesPage() {
     }
   }
 
+  async function handleRefreshPdm(municipalityId: number, municipalityName: string) {
+    setRefreshingMunicipalityId(municipalityId);
+    setRefreshProgress(prev => ({
+      ...prev,
+      [municipalityId]: { status: 'refreshing', message: 'Searching for PDM documents...' }
+    }));
+
+    try {
+      const result = await refreshPdmMutation.mutateAsync({
+        municipalityId,
+        maxIterations: 3,
+        confidenceThreshold: 0.80
+      });
+
+      if (result.databaseUpdated && result.bestPdmUrl) {
+        setRefreshProgress(prev => ({
+          ...prev,
+          [municipalityId]: { 
+            status: 'success', 
+            message: `Found PDM with ${(result.confidenceScore * 100).toFixed(0)}% confidence` 
+          }
+        }));
+        // Refetch to show updated PDM URL
+        refetch();
+      } else {
+        setRefreshProgress(prev => ({
+          ...prev,
+          [municipalityId]: { 
+            status: 'error', 
+            message: result.error || `No PDM found (confidence: ${(result.confidenceScore * 100).toFixed(0)}%)` 
+          }
+        }));
+      }
+    } catch (error) {
+      setRefreshProgress(prev => ({
+        ...prev,
+        [municipalityId]: { 
+          status: 'error', 
+          message: error instanceof Error ? error.message : 'Failed to refresh PDM' 
+        }
+      }));
+    } finally {
+      setRefreshingMunicipalityId(null);
+      // Clear status after 5 seconds
+      setTimeout(() => {
+        setRefreshProgress(prev => {
+          const newProgress = { ...prev };
+          delete newProgress[municipalityId];
+          return newProgress;
+        });
+      }, 5000);
+    }
+  }
+
+  async function handleBatchRefreshPdm() {
+    if (selectedMunicipalities.size === 0) return;
+    
+    setBatchRefreshing(true);
+    const municipalityIds = Array.from(selectedMunicipalities);
+    
+    for (const municipalityId of municipalityIds) {
+      const municipality = municipalities.find(m => m.id === municipalityId);
+      if (!municipality) continue;
+      
+      setRefreshProgress(prev => ({
+        ...prev,
+        [municipalityId]: { status: 'refreshing', message: 'Searching...' }
+      }));
+      
+      try {
+        const result = await refreshPdmMutation.mutateAsync({
+          municipalityId,
+          maxIterations: 2, // Use fewer iterations for batch
+          confidenceThreshold: 0.70 // Lower threshold for batch
+        });
+        
+        if (result.databaseUpdated && result.bestPdmUrl) {
+          setRefreshProgress(prev => ({
+            ...prev,
+            [municipalityId]: { 
+              status: 'success', 
+              message: `Found (${(result.confidenceScore * 100).toFixed(0)}%)` 
+            }
+          }));
+        } else {
+          setRefreshProgress(prev => ({
+            ...prev,
+            [municipalityId]: { 
+              status: 'error', 
+              message: 'Not found' 
+            }
+          }));
+        }
+      } catch (error) {
+        setRefreshProgress(prev => ({
+          ...prev,
+          [municipalityId]: { 
+            status: 'error', 
+            message: 'Failed' 
+          }
+        }));
+      }
+      
+      // Add delay between requests
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
+    setBatchRefreshing(false);
+    setSelectedMunicipalities(new Set());
+    refetch();
+    
+    // Clear all status after 10 seconds
+    setTimeout(() => {
+      setRefreshProgress({});
+    }, 10000);
+  }
+
   const docTypeLabels = {
     pdm: 'PDM',
     regulamento: 'Regulation',
@@ -220,7 +430,8 @@ export default function AdminMunicipalitiesPage() {
   };
 
   return (
-    <div className="p-6 space-y-4">
+    <TooltipProvider>
+      <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
@@ -233,55 +444,90 @@ export default function AdminMunicipalitiesPage() {
       <Card>
         <CardContent className="p-4">
           <div className="space-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="relative w-full max-w-md">
-                <Search className="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
-                <Input
-                  placeholder="Search by ID, name, or district..."
-                  className="pl-8"
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative w-full max-w-md">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                  <Input
+                    placeholder="Search by ID, name, or district..."
+                    className="pl-8"
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </div>
+
+                <Select 
+                  value={country} 
+                  onValueChange={(value) => {
+                    setCountry(value === 'all' ? '' : value);
                     setPage(1);
                   }}
-                />
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <Globe2 className="w-4 h-4 mr-2 text-gray-400" />
+                    <SelectValue placeholder="All countries" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All countries</SelectItem>
+                    {countries?.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c === 'PT' ? '🇵🇹 Portugal' : c === 'ES' ? '🇪🇸 Spain' : c === 'DE' ? '🇩🇪 Germany' : c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  variant="outline"
+                  onClick={() => refetch()}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    'Refresh'
+                  )}
+                </Button>
               </div>
 
-              <Select 
-                value={country} 
-                onValueChange={(value) => {
-                  setCountry(value === 'all' ? '' : value);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <Globe2 className="w-4 h-4 mr-2 text-gray-400" />
-                  <SelectValue placeholder="All countries" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All countries</SelectItem>
-                  {countries?.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c === 'PT' ? '🇵🇹 Portugal' : c === 'ES' ? '🇪🇸 Spain' : c === 'DE' ? '🇩🇪 Germany' : c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Button
-                variant="outline"
-                onClick={() => refetch()}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  'Refresh'
-                )}
-              </Button>
+              {selectedMunicipalities.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">
+                    {selectedMunicipalities.size} selected
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={handleBatchRefreshPdm}
+                    disabled={batchRefreshing}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {batchRefreshing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Refreshing...
+                      </>
+                    ) : (
+                      <>
+                        <Bot className="w-4 h-4 mr-2" />
+                        Batch Refresh PDM
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedMunicipalities(new Set())}
+                  >
+                    Clear Selection
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Parish Filters */}
@@ -348,19 +594,34 @@ export default function AdminMunicipalitiesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[40px]">
+                  <input
+                    type="checkbox"
+                    checked={selectedMunicipalities.size === municipalities.length && municipalities.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedMunicipalities(new Set(municipalities.map(m => m.id)));
+                      } else {
+                        setSelectedMunicipalities(new Set());
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </TableHead>
                 <TableHead className="w-[60px]">ID</TableHead>
                 <TableHead className="w-[180px]">Name</TableHead>
                 <TableHead className="w-[100px]">District</TableHead>
                 <TableHead className="w-[60px] text-center">Country</TableHead>
                 <TableHead className="w-[160px]">Website</TableHead>
                 <TableHead>PDM Document</TableHead>
-                <TableHead className="w-[80px] text-center">Actions</TableHead>
+                <TableHead className="w-[120px] text-center">Actions</TableHead>
+                <TableHead className="w-[40px] text-center">Select</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                  <TableCell colSpan={8} className="px-4 py-8 text-center text-gray-500">
                     <div className="inline-flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" /> Loading municipalities...
                     </div>
@@ -368,13 +629,29 @@ export default function AdminMunicipalitiesPage() {
                 </TableRow>
               ) : municipalities.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                  <TableCell colSpan={8} className="px-4 py-8 text-center text-gray-500">
                     No municipalities found
                   </TableCell>
                 </TableRow>
               ) : (
                 municipalities.map((m) => (
                   <TableRow key={m.id} className="border-t">
+                    <TableCell className="text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedMunicipalities.has(m.id)}
+                        onChange={(e) => {
+                          const newSelected = new Set(selectedMunicipalities);
+                          if (e.target.checked) {
+                            newSelected.add(m.id);
+                          } else {
+                            newSelected.delete(m.id);
+                          }
+                          setSelectedMunicipalities(newSelected);
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </TableCell>
                     <TableCell className="text-gray-500 font-mono text-xs">{m.id}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1 max-w-[200px]">
@@ -434,21 +711,42 @@ export default function AdminMunicipalitiesPage() {
                       })()}
                     </TableCell>
                     <TableCell className="text-center">
-                      {(() => {
-                        const pdmDoc = m.pdmDocuments?.documents?.find((doc: PDMDocument) => doc.documentType === 'pdm');
-                        if (pdmDoc) {
+                      <div className="flex items-center justify-center gap-1">
+                        {(() => {
+                          const pdmDoc = m.pdmDocuments?.documents?.find((doc: PDMDocument) => doc.documentType === 'pdm');
+                          
                           return (
-                            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => openEditDocDialog(m, pdmDoc)}>
-                              <Pencil className="w-3 h-3" />
-                            </Button>
+                            <>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button 
+                                      size="sm" 
+                                      variant="ghost" 
+                                      className="h-7 px-2 text-blue-600" 
+                                      onClick={() => openScrapingConfigModal(m)}
+                                    >
+                                      <Bot className="w-3 h-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Configure AI-powered PDM discovery</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              {pdmDoc ? (
+                                <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => openEditDocDialog(m, pdmDoc)}>
+                                  <Pencil className="w-3 h-3" />
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="ghost" className="h-7 px-2 text-blue-600" onClick={() => openAddDocDialog(m)}>
+                                  <Plus className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
                           );
-                        }
-                        return (
-                          <Button size="sm" variant="ghost" className="h-7 px-2 text-blue-600" onClick={() => openAddDocDialog(m)}>
-                            <Plus className="w-3 h-3" />
-                          </Button>
-                        );
-                      })()}
+                        })()}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -589,6 +887,180 @@ export default function AdminMunicipalitiesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* Scraping Configuration Dialog */}
+      <Dialog open={scrapingConfigOpen} onOpenChange={setScrapingConfigOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Configure AI PDM Discovery</DialogTitle>
+            <DialogDescription>
+              Configure parameters for automated PDM discovery for <strong>{scrapingMunicipality?.name}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Max Iterations */}
+            <div className="grid gap-2">
+              <Label htmlFor="maxIterations">
+                Max Iterations
+                <span className="ml-2 text-xs text-gray-500">(Allowed: 1-10)</span>
+              </Label>
+              <Input
+                id="maxIterations"
+                type="number"
+                min={1}
+                max={10}
+                value={scrapingMaxIterations}
+                onChange={(e) => setScrapingMaxIterations(parseInt(e.target.value) || 3)}
+                disabled={scrapingInProgress}
+              />
+              <p className="text-xs text-gray-500">
+                Number of search iterations to perform. Higher values = more thorough search.
+              </p>
+            </div>
+
+            {/* Confidence Threshold */}
+            <div className="grid gap-2">
+              <Label htmlFor="confidenceThreshold">
+                Confidence Threshold
+                <span className="ml-2 text-xs text-gray-500">(Allowed: 0.0-1.0)</span>
+              </Label>
+              <Input
+                id="confidenceThreshold"
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={scrapingConfidenceThreshold}
+                onChange={(e) => setScrapingConfidenceThreshold(parseFloat(e.target.value) || 0.80)}
+                disabled={scrapingInProgress}
+              />
+              <p className="text-xs text-gray-500">
+                Minimum confidence score required (0-1). Recommended: 0.70-0.85
+              </p>
+            </div>
+
+            {/* Process for RAG Option */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+              <input
+                type="checkbox"
+                id="scrapingProcessForRag"
+                checked={scrapingProcessForRag}
+                onChange={(e) => setScrapingProcessForRag(e.target.checked)}
+                disabled={scrapingInProgress}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <label htmlFor="scrapingProcessForRag" className="text-sm font-medium text-gray-900 cursor-pointer flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-blue-500" />
+                  Process for AI/RAG after discovery
+                </label>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Automatically convert PDF to JSON and generate embeddings after successful discovery
+                </p>
+              </div>
+            </div>
+
+            {/* Execute Button */}
+            {scrapingResult.status === 'idle' && (
+              <Button
+                onClick={executeScrapingWithConfig}
+                disabled={scrapingInProgress}
+                className="w-full"
+              >
+                {scrapingInProgress ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <Bot className="w-4 h-4 mr-2" />
+                    Start AI Discovery
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Scraping Result */}
+            {scrapingResult.status === 'success' && (
+              <div className="grid gap-3">
+                <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-green-900">{scrapingResult.message}</p>
+                    {scrapingResult.url && (
+                      <a 
+                        href={scrapingResult.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-xs text-green-700 hover:underline block mt-1 break-all"
+                      >
+                        {scrapingResult.url}
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {scrapingProcessForRag && processingStatus !== 'idle' && (
+                  <div className={`flex items-center gap-2 p-3 rounded-lg border ${
+                    processingStatus === 'processing' ? 'bg-blue-50 border-blue-200' :
+                    processingStatus === 'success' ? 'bg-green-50 border-green-200' :
+                    'bg-red-50 border-red-200'
+                  }`}>
+                    {processingStatus === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                    {processingStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                    {processingStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                    <span className={`text-sm ${
+                      processingStatus === 'processing' ? 'text-blue-700' :
+                      processingStatus === 'success' ? 'text-green-700' :
+                      'text-red-700'
+                    }`}>
+                      {processingMessage}
+                    </span>
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  onClick={executeScrapingWithConfig}
+                  disabled={scrapingInProgress}
+                  className="w-full"
+                >
+                  <RefreshCw className="w-3 h-3 mr-2" />
+                  Search Again
+                </Button>
+              </div>
+            )}
+
+            {scrapingResult.status === 'error' && (
+              <div className="grid gap-3">
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                  <p className="text-sm text-red-700">{scrapingResult.message}</p>
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={executeScrapingWithConfig}
+                  disabled={scrapingInProgress}
+                  className="w-full"
+                >
+                  <RefreshCw className="w-3 h-3 mr-2" />
+                  Try Again
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={resetScrapingConfig}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      </div>
+    </TooltipProvider>
   );
 }
