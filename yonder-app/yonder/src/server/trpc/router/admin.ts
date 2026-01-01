@@ -11,6 +11,7 @@ import {
   pdmRequestsTable,
   municipalities,
   portugalParishes,
+  regulations,
 } from "../../../lib/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 
@@ -1205,6 +1206,17 @@ export const adminRouter = router({
           force_refresh: input.forceRefresh,
           generate_embeddings: input.generateEmbeddings,
         });
+        
+        // Invalidate cached zoning rules since PDM content has changed
+        console.log(`[processPdmDocument] Invalidating cached zoning rules for municipality ${input.municipalityId}`);
+        await db
+          .update(regulations)
+          .set({
+            cachedZoningRules: null,
+            zoningRulesCachedAt: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(regulations.municipalityId, input.municipalityId));
         
         return {
           success: true,
