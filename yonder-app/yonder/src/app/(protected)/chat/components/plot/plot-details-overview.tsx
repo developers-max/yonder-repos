@@ -534,8 +534,9 @@ export default function PlotDetailsOverview({
 
             {(() => {
               const pdmDocs = plot.municipality?.pdmDocuments?.documents?.filter(
-                (document) => document.documentType === "pdm"
+                (document: { id: string; documentType: string; url: string; name?: string }) => document.documentType === "pdm"
               ) || [];
+              const mainPdmDoc = pdmDocs[0];
               
               return (
                 <div className="pt-4 border-t border-gray-100">
@@ -545,18 +546,15 @@ export default function PlotDetailsOverview({
                       <span className="font-medium">{plot.municipality?.name || 'Unknown Municipality'}</span>
                       <span className="text-xs text-gray-400">(ID: {plot.municipality?.id})</span>
                     </div>
-                    {pdmDocs.length > 0 ? (
-                      pdmDocs.map((document) => (
-                        <Button
-                          key={document.id}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(document.url, "_blank")}
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download Complete Regulations PDF
-                        </Button>
-                      ))
+                    {mainPdmDoc ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(mainPdmDoc.url, "_blank")}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Complete Regulations PDF
+                      </Button>
                     ) : (
                       <Button
                         variant="outline"

@@ -412,7 +412,7 @@ export default function AdminMunicipalitiesPage() {
                     </TableCell>
                     <TableCell>
                       {(() => {
-                        const pdmDoc = m.pdmDocuments?.documents?.find((doc) => doc.documentType === 'pdm');
+                        const pdmDoc = m.pdmDocuments?.documents?.find((doc: PDMDocument) => doc.documentType === 'pdm');
                         if (pdmDoc) {
                           return (
                             <div className="flex items-center gap-1.5 text-sm">
@@ -435,7 +435,7 @@ export default function AdminMunicipalitiesPage() {
                     </TableCell>
                     <TableCell className="text-center">
                       {(() => {
-                        const pdmDoc = m.pdmDocuments?.documents?.find((doc) => doc.documentType === 'pdm');
+                        const pdmDoc = m.pdmDocuments?.documents?.find((doc: PDMDocument) => doc.documentType === 'pdm');
                         if (pdmDoc) {
                           return (
                             <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => openEditDocDialog(m, pdmDoc)}>
