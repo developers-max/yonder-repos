@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/_components/ui/c
 import { Button } from '@/app/_components/ui/button';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/app/_components/ui/table';
 import Link from 'next/link';
-import { MapPin, Pencil, Check, X, ExternalLink, Search, Map, ChevronDown, ChevronUp, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapPin, Pencil, Check, X, ExternalLink, Search, Map, ChevronDown, ChevronUp, AlertCircle, ChevronLeft, ChevronRight, RefreshCw, FileText } from 'lucide-react';
 import { useToast } from '@/app/_components/ui/toast-provider';
 import { CadastralPolygonEditor, type CadastralGeometry } from '@/app/_components/map';
 
@@ -120,6 +120,26 @@ export default function AdminPlotsPage() {
         geometryToastRef.current = null;
       }
       toast.error(`Failed to save plot boundary: ${error.message}`);
+    },
+  });
+
+  const refreshEnrichmentsMutation = trpc.realtor.adminRefreshEnrichments.useMutation({
+    onSuccess: (data) => {
+      utils.realtor.adminGetPlot.invalidate({ plotId: searchedPlotId! });
+      toast.success(`Enrichments refreshed! (${data.enrichments_run.length} enrichments updated)`);
+    },
+    onError: (error) => {
+      toast.error(`Failed to refresh enrichments: ${error.message}`);
+    },
+  });
+
+  const regenerateReportMutation = trpc.realtor.adminRegenerateReport.useMutation({
+    onSuccess: () => {
+      utils.realtor.adminGetPlot.invalidate({ plotId: searchedPlotId! });
+      toast.success('Plot report cleared for regeneration!');
+    },
+    onError: (error) => {
+      toast.error(`Failed to regenerate report: ${error.message}`);
     },
   });
 
@@ -264,15 +284,39 @@ export default function AdminPlotsPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">Plot Details</CardTitle>
-              <Link
-                href={`/plot/${plot.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-              >
-                <ExternalLink className="w-4 h-4" />
-                View Public Page
-              </Link>
+              <div className="flex gap-2">
+                <Link
+                  href={`/plot/${plot.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View Public Page
+                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refreshEnrichmentsMutation.mutate({ plotId: plot.id })}
+                  disabled={refreshEnrichmentsMutation.isPending}
+                  className="gap-1"
+                  title="Refresh enrichments"
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshEnrichmentsMutation.isPending ? 'animate-spin' : ''}`} />
+                  Refresh Enrichments
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => regenerateReportMutation.mutate({ plotId: plot.id })}
+                  disabled={regenerateReportMutation.isPending}
+                  className="gap-1"
+                  title="Regenerate plot report"
+                >
+                  <FileText className="w-4 h-4" />
+                  Regenerate Report
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">

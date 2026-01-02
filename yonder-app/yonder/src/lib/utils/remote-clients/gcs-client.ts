@@ -52,9 +52,12 @@ function getStorageClient(): Storage {
  */
 export function extractGcsPath(gcsUrl: string): { bucket: string; path: string } | null {
   try {
+    // Trim whitespace from URL
+    const trimmedUrl = gcsUrl.trim();
+    
     // Handle gs:// protocol
-    if (gcsUrl.startsWith('gs://')) {
-      const withoutProtocol = gcsUrl.substring(5); // Remove 'gs://'
+    if (trimmedUrl.startsWith('gs://')) {
+      const withoutProtocol = trimmedUrl.substring(5); // Remove 'gs://'
       const firstSlash = withoutProtocol.indexOf('/');
       if (firstSlash === -1) {
         return null;
@@ -65,21 +68,27 @@ export function extractGcsPath(gcsUrl: string): { bucket: string; path: string }
     }
 
     // Handle https:// URLs
-    if (gcsUrl.startsWith('https://storage.googleapis.com/') || 
-        gcsUrl.startsWith('https://storage.cloud.google.com/')) {
-      const url = new URL(gcsUrl);
+    if (trimmedUrl.startsWith('https://storage.googleapis.com/') || 
+        trimmedUrl.startsWith('https://storage.cloud.google.com/')) {
+      const url = new URL(trimmedUrl);
+      // URL.pathname is already decoded by the URL constructor
       const pathParts = url.pathname.substring(1).split('/'); // Remove leading '/'
       if (pathParts.length < 2) {
+        console.error('[gcs-client] Invalid GCS URL structure - insufficient path components:', trimmedUrl);
         return null;
       }
       const bucket = pathParts[0];
       const path = pathParts.slice(1).join('/');
+      
+      // Log successful parsing for debugging
+      console.log('[gcs-client] Successfully parsed GCS URL:', { bucket, path });
       return { bucket, path };
     }
 
+    console.error('[gcs-client] Unsupported GCS URL format:', trimmedUrl);
     return null;
   } catch (error) {
-    console.error('[gcs-client] Failed to parse GCS URL:', error);
+    console.error('[gcs-client] Failed to parse GCS URL:', gcsUrl, error);
     return null;
   }
 }
@@ -88,17 +97,21 @@ export function extractGcsPath(gcsUrl: string): { bucket: string; path: string }
  * Check if a file exists in the GCS bucket
  */
 export async function fileExists(gcsUrl: string): Promise<boolean> {
+  console.log('[gcs-client] Checking if file exists:', gcsUrl);
   const pathInfo = extractGcsPath(gcsUrl);
   if (!pathInfo) {
-    console.error('[gcs-client] Invalid GCS URL format:', gcsUrl);
+    console.error('[gcs-client] Invalid GCS URL format - cannot extract path:', gcsUrl);
     return false;
   }
+
+  console.log('[gcs-client] Extracted path info:', pathInfo);
 
   try {
     const storage = getStorageClient();
     const bucket = storage.bucket(pathInfo.bucket);
     const file = bucket.file(pathInfo.path);
     const [exists] = await file.exists();
+    console.log('[gcs-client] File exists check result:', { exists, bucket: pathInfo.bucket, path: pathInfo.path });
     return exists;
   } catch (error) {
     console.error('[gcs-client] Error checking file existence:', error);

@@ -5,7 +5,7 @@ import Map, { Marker, Popup, MapRef, Source, Layer } from 'react-map-gl/mapbox';
 import { trpc } from '@/trpc/client';
 import { Card, CardContent } from '@/app/_components/ui/card';
 import { Badge } from '@/app/_components/ui/badge';
-import { MapPin, Square, Loader2, X, Layers, ChevronDown, Navigation, Trash2 } from 'lucide-react';
+import { MapPin, Square, Loader2, X, Navigation, Trash2 } from 'lucide-react';
 import type { PlotFilters, EnrichmentData } from '@/server/trpc/router/plot/plots';
 import Image from 'next/image';
 import Supercluster from 'supercluster';
@@ -13,14 +13,9 @@ import Supercluster from 'supercluster';
 // Mapbox CSS
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Button } from '@/app/_components/ui/button';
-import { PT_WMS_LAYERS, ES_WMS_LAYERS, type WMSLayerConfig, DEFAULT_ENABLED_LAYERS, PLOTS_LAYER_CONFIG, detectCountryFromCoordinates } from '@/app/_components/map/wms-layers-config';
-
-// Get WMS layers for a country (includes plots layer)
-function getWMSLayers(country: 'PT' | 'ES'): Record<string, WMSLayerConfig> {
-  const baseLayers = country === 'PT' ? PT_WMS_LAYERS : ES_WMS_LAYERS;
-  // Add plots layer at the beginning
-  return { plots: { ...PLOTS_LAYER_CONFIG, country }, ...baseLayers };
-}
+import { getWMSLayers, DEFAULT_ENABLED_LAYERS, detectCountryFromCoordinates } from '@/app/_components/map/wms-layers-config';
+import { MapLayers } from '@/app/_components/map/map-layers';
+import { LayerMenu } from '@/app/_components/map/layer-menu';
 
 interface PlotsMapProps {
   filters: Partial<PlotFilters>;
@@ -104,11 +99,6 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
   const [debouncedBounds, setDebouncedBounds] = useState<MapBounds | null>(null);
   const [selectedPlot, setSelectedPlot] = useState<string | null>(null);
   const [selectedPlotData, setSelectedPlotData] = useState<JitteredPlot | null>(null);
-  const [showLayerMenu, setShowLayerMenu] = useState(false);
-  const [showLegend, setShowLegend] = useState<string | null>(null); // Layer ID whose legend is shown
-  const [legendModal, setLegendModal] = useState<{ layerId: string; config: WMSLayerConfig } | null>(null); // Full-screen legend modal
-  const [currentMunicipality, setCurrentMunicipality] = useState<string | null>(null); // For dynamic CRUS layer
-  const [crusGeoJson, setCrusGeoJson] = useState<GeoJSON.FeatureCollection | null>(null); // CRUS GeoJSON data
   const [pinDropMode, setPinDropMode] = useState(false); // Interactive pin drop mode
   const [isDraggingPin, setIsDraggingPin] = useState(false); // Track if pin is being dragged
   
@@ -120,38 +110,8 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
     return detectCountryFromCoordinates(viewState.latitude, viewState.longitude);
   }, [viewState.latitude, viewState.longitude, singlePlotMode, country]);
   
-  // Get available WMS layers for the detected country
-  const availableLayers = useMemo(() => getWMSLayers(detectedCountry), [detectedCountry]);
-  
   // Track if plots have finished initial load (for layer loading priority)
   const [plotsLoaded, setPlotsLoaded] = useState(false);
-  
-  // Fetch municipality for current map center (for CRUS layer)
-  // PRIORITY: Only fetch after plots are loaded to avoid blocking main content
-  useEffect(() => {
-    if (!showCadastreLayer || detectedCountry !== 'PT') return;
-    if (!plotsLoaded && !singlePlotMode) return; // Wait for plots to load first
-    
-    const fetchMunicipality = async () => {
-      try {
-        const response = await fetch(
-          `/api/municipality-lookup?lat=${viewState.latitude}&lng=${viewState.longitude}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          if (data.normalized && data.normalized !== currentMunicipality) {
-            setCurrentMunicipality(data.normalized);
-          }
-        }
-      } catch (error) {
-        console.error('Municipality lookup failed:', error);
-      }
-    };
-    
-    // Debounce the fetch - longer delay for layer data (lower priority)
-    const timer = setTimeout(fetchMunicipality, 800);
-    return () => clearTimeout(timer);
-  }, [viewState.latitude, viewState.longitude, showCadastreLayer, detectedCountry, currentMunicipality, plotsLoaded, singlePlotMode]);
   
   // State for enabled layers - initialize with defaults when cadastre layer is shown
   const [enabledLayers, setEnabledLayers] = useState<Set<string>>(() => {
@@ -175,48 +135,8 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
         newLayers.add('plots');
       }
       setEnabledLayers(newLayers);
-      // Clear municipality when switching countries
-      setCurrentMunicipality(null);
-      setCrusGeoJson(null);
     }
   }, [detectedCountry, enabledLayers]);
-  
-  // Fetch CRUS GeoJSON when municipality changes and CRUS layer is enabled
-  // PRIORITY: Only fetch after plots are loaded
-  useEffect(() => {
-    if (!showCadastreLayer || !currentMunicipality || !enabledLayers.has('crus')) {
-      setCrusGeoJson(null);
-      return;
-    }
-    if (!plotsLoaded && !singlePlotMode) return; // Wait for plots first
-    
-    const fetchCrusData = async () => {
-      try {
-        // Calculate bbox from current view
-        const map = mapRef.current?.getMap();
-        if (!map) return;
-        
-        const mapBounds = map.getBounds();
-        if (!mapBounds) return;
-        
-        const bbox = `${mapBounds.getWest()},${mapBounds.getSouth()},${mapBounds.getEast()},${mapBounds.getNorth()}`;
-        
-        const response = await fetch(
-          `/api/crus-tiles?municipality=${currentMunicipality}&bbox=${bbox}&limit=500`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setCrusGeoJson(data);
-        }
-      } catch (error) {
-        console.error('CRUS data fetch failed:', error);
-      }
-    };
-    
-    // Debounce the fetch - delay for lower priority layer data
-    const timer = setTimeout(fetchCrusData, 500);
-    return () => clearTimeout(timer);
-  }, [currentMunicipality, showCadastreLayer, enabledLayers, viewState.zoom, plotsLoaded, singlePlotMode]);
   
   // Toggle a layer on/off
   const toggleLayer = useCallback((layerId: string) => {
@@ -782,99 +702,16 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
           </Marker>
         )}
 
-        {/* CRUS GeoJSON Layer - rendered separately as it uses dynamic GeoJSON */}
-        {showCadastreLayer && enabledLayers.has('crus') && crusGeoJson && crusGeoJson.features?.length > 0 && (
-          <Source
-            key={`crus-geojson-${currentMunicipality}`}
-            id="crus-geojson"
-            type="geojson"
-            data={crusGeoJson}
-          >
-            <Layer
-              id="crus-fill"
-              type="fill"
-              paint={{
-                'fill-color': ['get', '_color'],
-                'fill-opacity': 0.4
-              }}
-            />
-            <Layer
-              id="crus-outline"
-              type="line"
-              paint={{
-                'line-color': ['get', '_color'],
-                'line-width': 1.5,
-                'line-opacity': 0.8
-              }}
-            />
-          </Source>
-        )}
-
-        {/* WMS/Vector Tile Layers - dynamically render enabled layers */}
-        {showCadastreLayer && Object.entries(availableLayers).map(([layerId, config]) => {
-          if (!enabledLayers.has(layerId)) return null;
-          
-          // Skip plots - handled separately as markers above
-          if (layerId === 'plots') return null;
-          
-          // Skip CRUS - it's handled separately as GeoJSON above
-          if (layerId === 'crus') return null;
-          
-          // Handle vector tile layers (e.g., Portuguese cadastre)
-          if (config.type === 'vector') {
-            return (
-              <Source
-                key={`vector-${layerId}-${country}`}
-                id={`vector-${layerId}`}
-                type="vector"
-                tiles={[config.url]}
-                minzoom={8}
-                maxzoom={22}
-              >
-                <Layer
-                  id={`vector-${layerId}-fill`}
-                  type="fill"
-                  source-layer={config.sourceLayer || layerId}
-                  paint={{
-                    'fill-color': config.color,
-                    'fill-opacity': config.opacity * 0.4
-                  }}
-                  minzoom={12}
-                />
-                <Layer
-                  id={`vector-${layerId}-line`}
-                  type="line"
-                  source-layer={config.sourceLayer || layerId}
-                  paint={{
-                    'line-color': config.color,
-                    'line-width': 2,
-                    'line-opacity': config.opacity
-                  }}
-                  minzoom={12}
-                />
-              </Source>
-            );
-          }
-          
-          // Handle raster WMS layers (default)
-          return (
-            <Source
-              key={`wms-${layerId}-${country}`}
-              id={`wms-${layerId}`}
-              type="raster"
-              tiles={[config.url]}
-              tileSize={256}
-            >
-              <Layer
-                id={`wms-${layerId}-layer`}
-                type="raster"
-                paint={{
-                  'raster-opacity': config.opacity
-                }}
-              />
-            </Source>
-          );
-        })}
+        {/* WMS/Vector/CRUS Layers - using reusable MapLayers component */}
+        <MapLayers
+          country={detectedCountry}
+          enabledLayers={enabledLayers}
+          showCadastreLayer={showCadastreLayer}
+          mapRef={mapRef}
+          viewState={viewState}
+          plotsLoaded={plotsLoaded}
+          singlePlotMode={singlePlotMode}
+        />
 
         {/* Parcel boundary circle */}
         {showCadastreLayer && singlePlot && cadastreData?.parcel?.area_value && (() => {
@@ -1077,146 +914,16 @@ export default function PlotsMap({ filters, onPlotClick, onBoundsChange, resizeK
         </div>
       )}
 
-      {/* Layer Toggle Menu - bottom-left, next to pin drop */}
-      {showCadastreLayer && Object.keys(availableLayers).length > 0 && (
-        <div className="absolute bottom-2 left-2 z-10">
-          <div className="relative">
-            <button
-              onClick={() => setShowLayerMenu(!showLayerMenu)}
-              className="bg-white shadow-lg rounded-lg px-2 sm:px-3 py-2 flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-50 border border-gray-200"
-            >
-              <Layers className="w-4 h-4" />
-              <span className="hidden sm:inline">Layers</span>
-              <ChevronDown className={`w-3 h-3 sm:w-4 sm:h-4 transition-transform ${showLayerMenu ? 'rotate-180' : ''}`} />
-            </button>
-            
-            {showLayerMenu && (
-              <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 w-[calc(100vw-2rem)] sm:w-[320px] overflow-hidden">
-                <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Map Layers</p>
-                  <span className="text-xs font-medium text-gray-400">
-                    {detectedCountry === 'PT' ? '🇵🇹 Portugal' : '🇪🇸 Spain'}
-                  </span>
-                </div>
-                <div className="py-1 max-h-[200px] sm:max-h-[300px] overflow-y-auto">
-                  {Object.entries(availableLayers).map(([layerId, config]) => (
-                    <div key={layerId} className="px-3 py-2 hover:bg-gray-50">
-                      <div className="flex items-center gap-2">
-                        {/* Checkbox */}
-                        <button
-                          onClick={() => toggleLayer(layerId)}
-                          className="flex-shrink-0"
-                        >
-                          <div 
-                            className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                              enabledLayers.has(layerId) 
-                                ? 'bg-blue-500 border-blue-500' 
-                                : 'border-gray-300'
-                            }`}
-                          >
-                            {enabledLayers.has(layerId) && (
-                              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                              </svg>
-                            )}
-                          </div>
-                        </button>
-                        {/* Layer name and description - fixed width */}
-                        <button
-                          onClick={() => toggleLayer(layerId)}
-                          className="flex-1 min-w-0 text-left"
-                        >
-                          <p className="text-sm font-medium text-gray-700 truncate">{config.shortName}</p>
-                          <p className="text-xs text-gray-500 truncate">{config.description}</p>
-                        </button>
-                        {/* Info button - always reserve space */}
-                        <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center">
-                          {config.legendUrl && (
-                            <button
-                              onClick={() => setShowLegend(showLegend === layerId ? null : layerId)}
-                              className={`p-1 rounded hover:bg-gray-200 transition-colors ${showLegend === layerId ? 'bg-gray-200' : ''}`}
-                              title="Show legend"
-                            >
-                              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        {/* Color indicator */}
-                        <div 
-                          className="w-3 h-3 rounded-full flex-shrink-0" 
-                          style={{ backgroundColor: config.color }}
-                        />
-                      </div>
-                      {/* Legend panel */}
-                      {showLegend === layerId && config.legendUrl && (
-                        <div 
-                          className="mt-2 p-2 sm:p-3 bg-white rounded border border-gray-200 max-h-[150px] sm:max-h-[250px] overflow-y-auto shadow-inner cursor-pointer hover:border-blue-300 transition-colors"
-                          onClick={() => setLegendModal({ layerId, config })}
-                          title="Click to expand legend"
-                        >
-                          <div className="flex items-center justify-between mb-1 sm:mb-2">
-                            <p className="text-xs sm:text-sm font-medium text-gray-700">Legend</p>
-                            <span className="text-xs text-blue-500">Tap to expand</span>
-                          </div>
-                          <img 
-                            src={config.legendUrl} 
-                            alt={`Legend for ${config.shortName}`}
-                            className="w-full max-w-full"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
-                  <p className="text-xs text-gray-400">Source: {country === 'PT' ? 'DGT' : 'Catastro'}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Legend Modal */}
-      {legendModal && legendModal.config.legendUrl && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setLegendModal(null)}
-        >
-          <div 
-            className="bg-white rounded-lg shadow-2xl max-w-lg w-full mx-2 sm:mx-4 max-h-[85vh] sm:max-h-[90vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b bg-gray-50">
-              <h3 className="text-sm sm:text-base font-semibold text-gray-800 truncate pr-2">Legend: {legendModal.config.name}</h3>
-              <button
-                onClick={() => setLegendModal(null)}
-                className="p-1 hover:bg-gray-200 rounded transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-            <div className="p-2 sm:p-4 overflow-y-auto max-h-[calc(85vh-80px)] sm:max-h-[calc(90vh-60px)]">
-              <img 
-                src={legendModal.config.legendUrl} 
-                alt={`Legend for ${legendModal.config.name}`}
-                className="w-full max-w-full"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </div>
-            <div className="px-3 sm:px-4 py-2 border-t bg-gray-50 text-xs text-gray-500">
-              Source: {legendModal.config.provider}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Layer Toggle Menu - using reusable LayerMenu component */}
+      <div className="absolute bottom-2 left-2 z-10">
+        <LayerMenu
+          country={detectedCountry}
+          enabledLayers={enabledLayers}
+          onToggleLayer={toggleLayer}
+          showCadastreLayer={showCadastreLayer}
+          position="bottom-left"
+        />
+      </div>
     </div>
   );
 } 

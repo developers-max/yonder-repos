@@ -6,12 +6,14 @@ import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import * as turf from '@turf/turf';
 import { Button } from '@/app/_components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/_components/ui/card';
-import { Pencil, Trash2, RotateCcw, Save, MapPin, Square, X, Move, Layers, ChevronDown } from 'lucide-react';
+import { Pencil, Trash2, RotateCcw, Save, MapPin, Square, X, Move } from 'lucide-react';
 import DrawControl from './draw-control';
 
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
-import { PT_WMS_LAYERS, ES_WMS_LAYERS, type WMSLayerConfig, DEFAULT_ENABLED_LAYERS } from './wms-layers-config';
+import { DEFAULT_ENABLED_LAYERS } from './wms-layers-config';
+import { MapLayers } from './map-layers';
+import { LayerMenu } from './layer-menu';
 
 export interface CadastralGeometry {
   type: 'Polygon';
@@ -52,11 +54,6 @@ export interface CadastralPolygonEditorProps {
   showCadastreLayer?: boolean;
   /** Country code for cadastre layer (ES = Spain, PT = Portugal) */
   country?: 'ES' | 'PT';
-}
-
-// Get WMS layers for a country
-function getWMSLayers(country: 'PT' | 'ES'): Record<string, WMSLayerConfig> {
-  return country === 'PT' ? PT_WMS_LAYERS : ES_WMS_LAYERS;
 }
 
 // Custom draw styles for better visibility on satellite imagery
@@ -219,12 +216,6 @@ export default function CadastralPolygonEditor({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [markerPosition, setMarkerPosition] = useState(center);
   const [isDraggingMarker, setIsDraggingMarker] = useState(false);
-  const [showLayerMenu, setShowLayerMenu] = useState(false);
-  const [showLegend, setShowLegend] = useState<string | null>(null); // Layer ID whose legend is shown
-  const [legendModal, setLegendModal] = useState<{ layerId: string; config: WMSLayerConfig } | null>(null); // Full-screen legend modal
-  
-  // Get available WMS layers for the country
-  const availableLayers = useMemo(() => getWMSLayers(country), [country]);
   
   // State for enabled layers - initialize with defaults
   const [enabledLayers, setEnabledLayers] = useState<Set<string>>(() => {
@@ -233,6 +224,9 @@ export default function CadastralPolygonEditor({
     }
     return new Set();
   });
+  
+  // Track if map has loaded (for layer loading priority)
+  const [mapInitialized, setMapInitialized] = useState(false);
   
   // Toggle a layer on/off
   const toggleLayer = useCallback((layerId: string) => {
@@ -300,6 +294,7 @@ export default function CadastralPolygonEditor({
   // Fit bounds when map loads - include both polygon and marker
   const handleMapLoad = useCallback(() => {
     setMapLoaded(true);
+    setMapInitialized(true);
     if (mapRef.current) {
       try {
         // Start with marker position
@@ -452,65 +447,16 @@ export default function CadastralPolygonEditor({
             style={{ width: '100%', height: '100%' }}
             mapStyle="mapbox://styles/mapbox/light-v11"
           >
-            {/* WMS/Vector Tile Layers - dynamically render enabled layers */}
-            {showCadastreLayer && Object.entries(availableLayers).map(([layerId, config]) => {
-              if (!enabledLayers.has(layerId)) return null;
-              
-              // Handle vector tile layers (e.g., Portuguese cadastre)
-              if (config.type === 'vector') {
-                return (
-                  <Source
-                    key={`vector-${layerId}-${country}`}
-                    id={`vector-${layerId}`}
-                    type="vector"
-                    tiles={[config.url]}
-                    minzoom={8}
-                    maxzoom={22}
-                  >
-                    <Layer
-                      id={`vector-${layerId}-fill`}
-                      type="fill"
-                      source-layer={config.sourceLayer || layerId}
-                      paint={{
-                        'fill-color': config.color,
-                        'fill-opacity': config.opacity * 0.4
-                      }}
-                      minzoom={12}
-                    />
-                    <Layer
-                      id={`vector-${layerId}-line`}
-                      type="line"
-                      source-layer={config.sourceLayer || layerId}
-                      paint={{
-                        'line-color': config.color,
-                        'line-width': 2,
-                        'line-opacity': config.opacity
-                      }}
-                      minzoom={12}
-                    />
-                  </Source>
-                );
-              }
-              
-              // Handle raster WMS layers (default)
-              return (
-                <Source
-                  key={`wms-${layerId}-${country}`}
-                  id={`wms-${layerId}`}
-                  type="raster"
-                  tiles={[config.url]}
-                  tileSize={256}
-                >
-                  <Layer
-                    id={`wms-${layerId}-layer`}
-                    type="raster"
-                    paint={{
-                      'raster-opacity': config.opacity
-                    }}
-                  />
-                </Source>
-              );
-            })}
+            {/* WMS/Vector/CRUS Layers - using reusable MapLayers component */}
+            <MapLayers
+              country={country}
+              enabledLayers={enabledLayers}
+              showCadastreLayer={showCadastreLayer}
+              mapRef={mapRef}
+              viewState={viewState}
+              plotsLoaded={mapInitialized}
+              singlePlotMode={true}
+            />
 
             {/* Draw control - only shown when editing */}
             {isEditing && mapLoaded && (
@@ -636,145 +582,22 @@ export default function CadastralPolygonEditor({
             </div>
           )}
 
-          {/* Layer Toggle Menu */}
-          {showCadastreLayer && Object.keys(availableLayers).length > 0 && (
-            <div className="absolute bottom-2 right-2 z-10">
-              <div className="relative">
-                <button
-                  onClick={() => setShowLayerMenu(!showLayerMenu)}
-                  className="bg-white shadow-lg rounded-lg px-3 py-2 flex items-center gap-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border border-gray-200"
-                >
-                  <Layers className="w-4 h-4" />
-                  <span>Layers</span>
-                  <ChevronDown className={`w-4 h-4 transition-transform ${showLayerMenu ? 'rotate-180' : ''}`} />
-                </button>
-                
-                {showLayerMenu && (
-                  <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-xl border border-gray-200 w-[calc(100vw-2rem)] sm:w-auto sm:min-w-[280px] max-w-[320px] overflow-hidden">
-                    <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
-                      <p className="text-xs font-semibold text-gray-500 uppercase">Map Layers</p>
-                    </div>
-                    <div className="py-1 max-h-[200px] sm:max-h-[300px] overflow-y-auto">
-                      {Object.entries(availableLayers).map(([layerId, config]) => (
-                        <div key={layerId} className="px-3 py-2 hover:bg-gray-50">
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => toggleLayer(layerId)}
-                              className="flex items-center gap-3 flex-1 text-left"
-                            >
-                              <div 
-                                className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                                  enabledLayers.has(layerId) 
-                                    ? 'bg-blue-500 border-blue-500' 
-                                    : 'border-gray-300'
-                                }`}
-                              >
-                                {enabledLayers.has(layerId) && (
-                                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-700 truncate">{config.shortName}</p>
-                                <p className="text-xs text-gray-500 truncate">{config.description}</p>
-                              </div>
-                            </button>
-                            {config.legendUrl && (
-                              <button
-                                onClick={() => setShowLegend(showLegend === layerId ? null : layerId)}
-                                className={`p-1 rounded hover:bg-gray-200 transition-colors ${showLegend === layerId ? 'bg-gray-200' : ''}`}
-                                title="Show legend"
-                              >
-                                <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              </button>
-                            )}
-                            <div 
-                              className="w-3 h-3 rounded-full flex-shrink-0" 
-                              style={{ backgroundColor: config.color }}
-                            />
-                          </div>
-                          {/* Legend panel */}
-                          {showLegend === layerId && config.legendUrl && (
-                            <div 
-                              className="mt-2 p-2 sm:p-3 bg-white rounded border border-gray-200 max-h-[150px] sm:max-h-[250px] overflow-y-auto shadow-inner cursor-pointer hover:border-blue-300 transition-colors"
-                              onClick={() => setLegendModal({ layerId, config })}
-                              title="Click to expand legend"
-                            >
-                              <div className="flex items-center justify-between mb-1 sm:mb-2">
-                                <p className="text-xs sm:text-sm font-medium text-gray-700">Legend</p>
-                                <span className="text-xs text-blue-500">Tap to expand</span>
-                              </div>
-                              <img 
-                                src={config.legendUrl} 
-                                alt={`Legend for ${config.shortName}`}
-                                className="w-full max-w-full"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none';
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
-                      <p className="text-xs text-gray-400">Source: {country === 'PT' ? 'DGT' : 'Catastro'}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Layer Toggle Menu - using reusable LayerMenu component */}
+          <div className="absolute bottom-2 right-2 z-10">
+            <LayerMenu
+              country={country}
+              enabledLayers={enabledLayers}
+              onToggleLayer={toggleLayer}
+              showCadastreLayer={showCadastreLayer}
+              position="bottom-right"
+            />
+          </div>
         </div>
   );
 
-  // Legend Modal
-  const legendModalComponent = legendModal && legendModal.config.legendUrl && (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={() => setLegendModal(null)}
-    >
-      <div 
-        className="bg-white rounded-lg shadow-2xl max-w-lg w-full mx-2 sm:mx-4 max-h-[85vh] sm:max-h-[90vh] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b bg-gray-50">
-          <h3 className="text-sm sm:text-base font-semibold text-gray-800 truncate pr-2">Legend: {legendModal.config.name}</h3>
-          <button
-            onClick={() => setLegendModal(null)}
-            className="p-1 hover:bg-gray-200 rounded transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
-        </div>
-        <div className="p-2 sm:p-4 overflow-y-auto max-h-[calc(85vh-80px)] sm:max-h-[calc(90vh-60px)]">
-          <img 
-            src={legendModal.config.legendUrl} 
-            alt={`Legend for ${legendModal.config.name}`}
-            className="w-full max-w-full"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
-        </div>
-        <div className="px-3 sm:px-4 py-2 border-t bg-gray-50 text-xs text-gray-500">
-          Source: {legendModal.config.provider}
-        </div>
-      </div>
-    </div>
-  );
-
-  // Minimal mode - just the map
+  // Minimal mode - just the map (legend modal now handled by LayerMenu component)
   if (minimal) {
-    return (
-      <>
-        {mapContent}
-        {legendModalComponent}
-      </>
-    );
+    return mapContent;
   }
 
   // Full mode with card wrapper
@@ -879,7 +702,6 @@ export default function CadastralPolygonEditor({
         {/* Map */}
         {mapContent}
       </CardContent>
-      {legendModalComponent}
     </Card>
   );
 }

@@ -41,15 +41,17 @@ export async function GET(
 
     let reportUrl: string | null = plot.plotReportUrl;
 
+    console.log('[plot-report-pdf API] Retrieved plotReportUrl from DB:', reportUrl);
+
     // If no report URL or file doesn't exist, generate new report
     if (!reportUrl || !(await fileExists(reportUrl))) {
       if (!reportUrl) {
         console.log('[plot-report-pdf API] No plotReportUrl found, generating new report');
       } else {
-        console.log('[plot-report-pdf API] PDF file not found in storage, generating new report');
+        console.log('[plot-report-pdf API] PDF file not found in storage, generating new report. URL was:', reportUrl);
       }
 
-      // Generate new report via Python service
+      // Generate new report via Python service (which updates the DB itself)
       const generatedReport = await generatePlotReportClient({
         plot_id: plotId,
       });
@@ -59,29 +61,30 @@ export async function GET(
         status: generatedReport.status,
       });
 
-      // Update the database with the new report URL
-      await db
-        .update(enrichedPlots)
-        .set({ plotReportUrl: generatedReport.pdf_url })
-        .where(eq(enrichedPlots.id, plotId));
-
+      // Use the URL from the generation response
       reportUrl = generatedReport.pdf_url;
-      console.log('[plot-report-pdf API] Database updated with new report URL');
+      console.log('[plot-report-pdf API] Using generated report URL:', reportUrl);
     } else {
       console.log('[plot-report-pdf API] Found existing plotReportUrl:', reportUrl);
     }
 
     // Get file metadata
+    console.log('[plot-report-pdf API] Attempting to get file metadata for:', reportUrl);
     const metadata = await getFileMetadata(reportUrl);
     if (!metadata) {
+      console.error('[plot-report-pdf API] Failed to retrieve PDF metadata for URL:', reportUrl);
       return NextResponse.json(
         { error: 'Failed to retrieve PDF metadata from storage' },
         { status: 500 }
       );
     }
 
+    console.log('[plot-report-pdf API] Retrieved metadata:', { size: metadata.size, contentType: metadata.contentType });
+
     // Get the readable stream from GCS
+    console.log('[plot-report-pdf API] Creating file stream for:', reportUrl);
     const stream = await getFileStream(reportUrl);
+    console.log('[plot-report-pdf API] File stream created successfully');
 
     // Convert Node.js ReadableStream to Web ReadableStream for Next.js response
     const webStream = new ReadableStream({
