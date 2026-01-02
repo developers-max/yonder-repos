@@ -10,7 +10,7 @@ import * as path from 'path';
 /**
  * Type representing the available enrichment options
  */
-type EnrichmentType = 'amenities' | 'climate' | 'population' | 'municipalities' | 'combined' | 'casafari' | 'casafari-search' | 'crus-zoning' | 'casafari-realtors' | 'llm-realtors' | 'llm-municipalities' | 'pdm-embeddings' | 'crus-translate' | 'plots-loader' | 'plots-realtors' | 'images' | 'sync-price-size' | 'plot-search' | 'plots-loader-country' | 'spain-zoning' | 'spain-cadastre' | 'portugal-cadastre' | 'germany-zoning' | 'exa-municipalities';
+type EnrichmentType = 'amenities' | 'climate' | 'population' | 'municipalities' | 'combined' | 'casafari' | 'casafari-search' | 'crus-zoning' | 'casafari-realtors' | 'llm-realtors' | 'llm-municipalities' | 'pdm-embeddings' | 'crus-translate' | 'plots-loader' | 'plots-realtors' | 'images' | 'sync-price-size' | 'plot-search' | 'plots-loader-country' | 'spain-zoning' | 'spain-cadastre' | 'portugal-cadastre' | 'germany-zoning' | 'exa-municipalities' | 'layers';
 
 /**
  * Creates a CLI interface to prompt the user for selecting an enrichment type
@@ -45,8 +45,9 @@ async function promptForEnrichmentType(): Promise<EnrichmentType> {
     console.log('19. LLM enrichment: find municipality websites, country codes, PDM documents (Gemini)');
     console.log('20. PDM document embeddings (OpenAI + pgvector)');
     console.log('21. Exa Search: find municipality websites (Exa API)');
+    console.log('22. Unified Layers (all geographic layers: administrative, cadastre, zoning, land use, elevation)');
     
-    rl.question('\nSelect a type of enrichment (1-21): ', (answer) => {
+    rl.question('\nSelect a type of enrichment (1-22): ', (answer) => {
       rl.close();
       
       switch(answer.trim()) {
@@ -112,6 +113,9 @@ async function promptForEnrichmentType(): Promise<EnrichmentType> {
           break;
         case '21':
           resolve('exa-municipalities');
+          break;
+        case '22':
+          resolve('layers');
           break;
         default:
           console.log('Invalid selection, defaulting to combined.');
@@ -405,6 +409,11 @@ async function main() {
             await loadAllCountriesPlots();
             break;
         }
+        break;
+      }
+      case 'layers': {
+        const { enrichLayers } = await import('./enrichments/layers');
+        await enrichLayers();
         break;
       }
       default:

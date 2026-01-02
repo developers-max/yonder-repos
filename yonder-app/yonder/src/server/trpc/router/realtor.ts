@@ -1469,4 +1469,109 @@ export const realtorRouter = router({
         },
       };
     }),
+
+  // Admin: Refresh enrichments for a plot
+  adminRefreshEnrichments: protectedProcedure
+    .input(z.object({ plotId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { plotId } = input;
+
+      // Get plot coordinates
+      const [plot] = await db
+        .select({
+          latitude: enrichedPlotsStage.latitude,
+          longitude: enrichedPlotsStage.longitude,
+          realLatitude: enrichedPlotsStage.realLatitude,
+          realLongitude: enrichedPlotsStage.realLongitude,
+        })
+        .from(enrichedPlotsStage)
+        .where(eq(enrichedPlotsStage.id, plotId))
+        .limit(1);
+
+      if (!plot) {
+        throw new Error('Plot not found');
+      }
+
+      // Use real coordinates if available, otherwise use public coordinates
+      const lat = plot.realLatitude ?? plot.latitude;
+      const lng = plot.realLongitude ?? plot.longitude;
+
+      // Call enrichment service
+      const enrichmentData = await enrichLocation({
+        latitude: lat,
+        longitude: lng,
+        plot_id: plotId,
+        store_results: true,
+      });
+
+      console.log('Admin: Enrichments refreshed:', {
+        plotId,
+        enrichments_run: enrichmentData.enrichments_run,
+        enrichments_failed: enrichmentData.enrichments_failed,
+      });
+
+      // Clear plot report so it regenerates with new data
+      if (enrichmentData.enrichments_run.length > 0) {
+        await db
+          .update(enrichedPlotsStage)
+          .set({
+            plotReportUrl: null,
+            plotReportJson: null,
+          })
+          .where(eq(enrichedPlotsStage.id, plotId));
+      }
+
+      // Refresh materialized view
+      const useProdTables = (process.env.PLOTS_TABLE_ENV || 'stage').toLowerCase() === 'prod';
+      if (useProdTables) {
+        await db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY enriched_plots`);
+      }
+
+      return {
+        success: true,
+        enrichments_run: enrichmentData.enrichments_run,
+        enrichments_failed: enrichmentData.enrichments_failed,
+      };
+    }),
+
+  // Admin: Regenerate plot report
+  adminRegenerateReport: protectedProcedure
+    .input(z.object({ plotId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { plotId } = input;
+
+      // Verify plot exists
+      const [plot] = await db
+        .select({ id: enrichedPlotsStage.id })
+        .from(enrichedPlotsStage)
+        .where(eq(enrichedPlotsStage.id, plotId))
+        .limit(1);
+
+      if (!plot) {
+        throw new Error('Plot not found');
+      }
+
+      // Clear plot report data to force regeneration
+      await db
+        .update(enrichedPlotsStage)
+        .set({
+          plotReportUrl: null,
+          plotReportJson: null,
+        })
+        .where(eq(enrichedPlotsStage.id, plotId));
+
+      console.log('Admin: Plot report cleared for regeneration:', { plotId });
+
+      // Refresh materialized view
+      const useProdTables = (process.env.PLOTS_TABLE_ENV || 'stage').toLowerCase() === 'prod';
+      if (useProdTables) {
+        await db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY enriched_plots`);
+      }
+
+      return { success: true };
+    }),
 });

@@ -25,6 +25,7 @@
     "spain-cadastre": "ts-node src/index.ts spain-cadastre",
     "portugal-cadastre": "ts-node src/index.ts portugal-cadastre",
     "germany-zoning": "ts-node src/index.ts germany-zoning",
+    "layers": "ts-node src/index.ts layers",
     "plots-loader": "ts-node src/index.ts plots-loader",
     "plots-realtors": "ts-node src/index.ts plots-realtors",
     "plot-search-portugal": "ts-node src/index.ts plot-search portugal",

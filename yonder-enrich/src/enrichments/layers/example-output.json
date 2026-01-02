@@ -1,0 +1,370 @@
+{
+  "enrichment_data": {
+    "layers": {
+      "timestamp": "2025-01-02T16:54:00.000Z",
+      "coordinates": {
+        "lat": 39.45728,
+        "lng": -8.19321
+      },
+      "country": "PT",
+      "layersByCategory": {
+        "administrative": [
+          {
+            "layerId": "pt-distrito",
+            "layerName": "Distrito",
+            "found": true,
+            "data": {
+              "distrito": "Santarém",
+              "source": "DGT WMS"
+            }
+          },
+          {
+            "layerId": "pt-municipio",
+            "layerName": "Município",
+            "found": true,
+            "data": {
+              "municipio": "Ferreira do Zêzere",
+              "distrito": "Santarém",
+              "nuts1": "PT",
+              "nuts2": "Centro",
+              "nuts3": "Médio Tejo",
+              "areaHa": 19154.2,
+              "nFreguesias": 6
+            }
+          },
+          {
+            "layerId": "pt-freguesia",
+            "layerName": "Freguesia",
+            "found": true,
+            "data": {
+              "freguesia": "Ferreira do Zêzere",
+              "municipio": "Ferreira do Zêzere",
+              "distrito": "Santarém",
+              "areaHa": 2431.5
+            }
+          },
+          {
+            "layerId": "pt-nuts3",
+            "layerName": "NUTS3",
+            "found": true,
+            "data": {
+              "nuts3": "Médio Tejo",
+              "nuts2": "Centro",
+              "nuts1": "PT"
+            }
+          },
+          {
+            "layerId": "pt-municipality-db",
+            "layerName": "Município (Database)",
+            "found": true,
+            "data": {
+              "name": "Ferreira do Zêzere",
+              "caopId": "1408",
+              "hasRenService": true,
+              "hasRanService": false,
+              "gisVerified": true
+            }
+          }
+        ],
+        "cadastre": [
+          {
+            "layerId": "pt-cadastro",
+            "layerName": "Cadastro",
+            "found": true,
+            "data": {
+              "parcelReference": "AAA 001 140 232",
+              "inspireId": "PT.CAOP.AAA001140232",
+              "label": "AAA 001 140 232",
+              "areaM2": 23571,
+              "municipalityCode": "1408",
+              "validFrom": "2020-01-01",
+              "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                  [
+                    [-8.19321, 39.45728],
+                    [-8.19421, 39.45728],
+                    [-8.19421, 39.45828],
+                    [-8.19321, 39.45828],
+                    [-8.19321, 39.45728]
+                  ]
+                ]
+              },
+              "centroid": [-8.19371, 39.45778],
+              "distanceMeters": 0,
+              "containsPoint": true
+            }
+          }
+        ],
+        "zoning": [
+          {
+            "layerId": "pt-crus",
+            "layerName": "CRUS Zoning",
+            "found": true,
+            "data": {
+              "label": "Espaços Agrícolas",
+              "labelEn": "Agricultural Spaces",
+              "category": "Rural",
+              "landClass": "Agricola",
+              "typename": "crus_ferreira_do_zezere",
+              "source": "DGT OGC API",
+              "municipality": "Ferreira do Zêzere"
+            }
+          },
+          {
+            "layerId": "pt-ren",
+            "layerName": "REN (Ecological Reserve)",
+            "found": false
+          },
+          {
+            "layerId": "pt-ran",
+            "layerName": "RAN (Agricultural Reserve)",
+            "found": true,
+            "data": {
+              "sourceLayer": "RAN",
+              "type": "TIPORAN_RAN",
+              "designation": "Reserva Agrícola Nacional",
+              "areaHa": 1250.5,
+              "legalRef": "DL 73/2009",
+              "category": "RAN",
+              "municipality": "Ferreira do Zêzere",
+              "attributes": {
+                "DESIGNACAO": "DELIMITAÇÃO DA RAN DO CONCELHO",
+                "TIPOLOGIA": "Reserva Agrícola Nacional",
+                "CONCELHO": "FERREIRA DO ZÊZERE",
+                "AREA_HA": 1250.5
+              }
+            }
+          }
+        ],
+        "landuse": [
+          {
+            "layerId": "pt-cos",
+            "layerName": "COS 2018",
+            "found": true,
+            "data": {
+              "cos": "Culturas temporárias de sequeiro e regadio",
+              "cosLevel1": "Territórios Agrícolas",
+              "cosLevel2": "Culturas temporárias",
+              "cosLevel3": "Culturas temporárias de sequeiro e regadio",
+              "cosCode": "2.1.1",
+              "cosSource": "DGT COS2018"
+            }
+          },
+          {
+            "layerId": "pt-clc",
+            "layerName": "CORINE Land Cover 2012",
+            "found": true,
+            "data": {
+              "clc": "Non-irrigated arable land",
+              "clcCode": "211",
+              "clcSource": "DGT CLC2012"
+            }
+          },
+          {
+            "layerId": "pt-built-up",
+            "layerName": "Built-up Areas",
+            "found": false
+          }
+        ],
+        "elevation": [
+          {
+            "layerId": "elevation",
+            "layerName": "Elevation",
+            "found": true,
+            "data": {
+              "elevationM": 142,
+              "source": "Open-Elevation API"
+            }
+          }
+        ]
+      },
+      "layersRaw": [
+        {
+          "layerId": "pt-distrito",
+          "layerName": "Distrito",
+          "found": true,
+          "data": {
+            "distrito": "Santarém",
+            "source": "DGT WMS"
+          }
+        },
+        {
+          "layerId": "pt-municipio",
+          "layerName": "Município",
+          "found": true,
+          "data": {
+            "municipio": "Ferreira do Zêzere",
+            "distrito": "Santarém",
+            "nuts1": "PT",
+            "nuts2": "Centro",
+            "nuts3": "Médio Tejo",
+            "areaHa": 19154.2,
+            "nFreguesias": 6
+          }
+        },
+        {
+          "layerId": "pt-freguesia",
+          "layerName": "Freguesia",
+          "found": true,
+          "data": {
+            "freguesia": "Ferreira do Zêzere",
+            "municipio": "Ferreira do Zêzere",
+            "distrito": "Santarém",
+            "areaHa": 2431.5
+          }
+        },
+        {
+          "layerId": "pt-nuts3",
+          "layerName": "NUTS3",
+          "found": true,
+          "data": {
+            "nuts3": "Médio Tejo",
+            "nuts2": "Centro",
+            "nuts1": "PT"
+          }
+        },
+        {
+          "layerId": "pt-cadastro",
+          "layerName": "Cadastro",
+          "found": true,
+          "data": {
+            "parcelReference": "AAA 001 140 232",
+            "inspireId": "PT.CAOP.AAA001140232",
+            "label": "AAA 001 140 232",
+            "areaM2": 23571,
+            "municipalityCode": "1408",
+            "validFrom": "2020-01-01",
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [-8.19321, 39.45728],
+                  [-8.19421, 39.45728],
+                  [-8.19421, 39.45828],
+                  [-8.19321, 39.45828],
+                  [-8.19321, 39.45728]
+                ]
+              ]
+            },
+            "centroid": [-8.19371, 39.45778],
+            "distanceMeters": 0,
+            "containsPoint": true
+          }
+        },
+        {
+          "layerId": "pt-municipality-db",
+          "layerName": "Município (Database)",
+          "found": true,
+          "data": {
+            "name": "Ferreira do Zêzere",
+            "caopId": "1408",
+            "hasRenService": true,
+            "hasRanService": false,
+            "gisVerified": true
+          }
+        },
+        {
+          "layerId": "pt-crus",
+          "layerName": "CRUS Zoning",
+          "found": true,
+          "data": {
+            "label": "Espaços Agrícolas",
+            "labelEn": "Agricultural Spaces",
+            "category": "Rural",
+            "landClass": "Agricola",
+            "typename": "crus_ferreira_do_zezere",
+            "source": "DGT OGC API",
+            "municipality": "Ferreira do Zêzere"
+          }
+        },
+        {
+          "layerId": "pt-ren",
+          "layerName": "REN (Ecological Reserve)",
+          "found": false
+        },
+        {
+          "layerId": "pt-ran",
+          "layerName": "RAN (Agricultural Reserve)",
+          "found": true,
+          "data": {
+            "sourceLayer": "RAN",
+            "type": "TIPORAN_RAN",
+            "designation": "Reserva Agrícola Nacional",
+            "areaHa": 1250.5,
+            "legalRef": "DL 73/2009",
+            "category": "RAN",
+            "municipality": "Ferreira do Zêzere",
+            "attributes": {
+              "DESIGNACAO": "DELIMITAÇÃO DA RAN DO CONCELHO",
+              "TIPOLOGIA": "Reserva Agrícola Nacional",
+              "CONCELHO": "FERREIRA DO ZÊZERE",
+              "AREA_HA": 1250.5
+            }
+          }
+        },
+        {
+          "layerId": "pt-cos",
+          "layerName": "COS 2018",
+          "found": true,
+          "data": {
+            "cos": "Culturas temporárias de sequeiro e regadio",
+            "cosLevel1": "Territórios Agrícolas",
+            "cosLevel2": "Culturas temporárias",
+            "cosLevel3": "Culturas temporárias de sequeiro e regadio",
+            "cosCode": "2.1.1",
+            "cosSource": "DGT COS2018"
+          }
+        },
+        {
+          "layerId": "pt-clc",
+          "layerName": "CORINE Land Cover 2012",
+          "found": true,
+          "data": {
+            "clc": "Non-irrigated arable land",
+            "clcCode": "211",
+            "clcSource": "DGT CLC2012"
+          }
+        },
+        {
+          "layerId": "pt-built-up",
+          "layerName": "Built-up Areas",
+          "found": false
+        },
+        {
+          "layerId": "elevation",
+          "layerName": "Elevation",
+          "found": true,
+          "data": {
+            "elevationM": 142,
+            "source": "Open-Elevation API"
+          }
+        }
+      ]
+    },
+    "amenities": {
+      "restaurant_or_fastfood": {
+        "count": 12,
+        "nearest": {
+          "name": "Restaurante Ti Zé",
+          "distance": 450
+        }
+      },
+      "supermarket": {
+        "count": 3,
+        "nearest": {
+          "name": "Pingo Doce",
+          "distance": 1200
+        }
+      }
+    },
+    "cadastral": {
+      "cadastral_reference": "AAA 001 140 232",
+      "parcel_area_m2": 23571
+    },
+    "zoning": {
+      "label": "Espaços Agrícolas",
+      "category": "Rural"
+    }
+  }
+}
