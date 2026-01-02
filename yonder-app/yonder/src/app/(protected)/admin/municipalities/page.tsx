@@ -71,6 +71,20 @@ export default function AdminMunicipalitiesPage() {
   const [batchRefreshing, setBatchRefreshing] = useState(false);
   const limit = 20;
 
+  // Scraping configuration modal state
+  const [scrapingConfigOpen, setScrapingConfigOpen] = useState(false);
+  const [scrapingMunicipality, setScrapingMunicipality] = useState<Municipality | null>(null);
+  const [scrapingMaxIterations, setScrapingMaxIterations] = useState(3);
+  const [scrapingConfidenceThreshold, setScrapingConfidenceThreshold] = useState(0.80);
+  const [scrapingProcessForRag, setScrapingProcessForRag] = useState(false);
+  const [scrapingInProgress, setScrapingInProgress] = useState(false);
+  const [scrapingResult, setScrapingResult] = useState<{
+    status: 'idle' | 'success' | 'error';
+    message?: string;
+    url?: string;
+    confidence?: number;
+  }>({ status: 'idle' });
+
   const refreshPdmMutation = trpc.admin.refreshMunicipalityPdm.useMutation();
 
   const { data: countries } = trpc.admin.getMunicipalityCountries.useQuery();
@@ -149,6 +163,77 @@ export default function AdminMunicipalitiesPage() {
     setNewDocDescription(doc.description || '');
     setSelectedMunicipality(municipality);
     setDialogOpen(true);
+  }
+
+  const openScrapingConfigModal = (municipality: Municipality) => {
+    setScrapingMunicipality(municipality);
+    setScrapingMaxIterations(3);
+    setScrapingConfidenceThreshold(0.80);
+    setScrapingProcessForRag(false);
+    setScrapingResult({ status: 'idle' });
+    setScrapingConfigOpen(true);
+  };
+
+  const resetScrapingConfig = () => {
+    setScrapingConfigOpen(false);
+    setScrapingMunicipality(null);
+    setScrapingMaxIterations(3);
+    setScrapingConfidenceThreshold(0.80);
+    setScrapingProcessForRag(false);
+    setScrapingInProgress(false);
+    setScrapingResult({ status: 'idle' });
+  };
+
+  async function executeScrapingWithConfig() {
+    if (!scrapingMunicipality) return;
+    
+    setScrapingInProgress(true);
+    setScrapingResult({ status: 'idle' });
+    
+    try {
+      const result = await refreshPdmMutation.mutateAsync({
+        municipalityId: scrapingMunicipality.id,
+        maxIterations: scrapingMaxIterations,
+        confidenceThreshold: scrapingConfidenceThreshold
+      });
+      
+      if (result.databaseUpdated && result.bestPdmUrl) {
+        setScrapingResult({
+          status: 'success',
+          message: `Found PDM with ${(result.confidenceScore * 100).toFixed(0)}% confidence`,
+          url: result.bestPdmUrl,
+          confidence: result.confidenceScore
+        });
+        
+        // Trigger RAG processing if enabled
+        if (scrapingProcessForRag) {
+          setProcessingStatus('processing');
+          setProcessingMessage('Processing document for RAG...');
+          
+          processPdmMutation.mutate({
+            municipalityId: scrapingMunicipality.id,
+            pdmUrl: result.bestPdmUrl,
+            forceRefresh: true,
+            generateEmbeddings: true,
+          });
+        }
+        
+        // Refresh the table
+        refetch();
+      } else {
+        setScrapingResult({
+          status: 'error',
+          message: result.error || `No PDM found with sufficient confidence (${(result.confidenceScore * 100).toFixed(0)}%)`
+        });
+      }
+    } catch (error) {
+      setScrapingResult({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Failed to scrape PDM'
+      });
+    } finally {
+      setScrapingInProgress(false);
+    }
   }
 
   function triggerRagProcessing(municipalityId: number, pdmUrl: string) {
@@ -655,18 +740,13 @@ export default function AdminMunicipalitiesPage() {
                                       size="sm" 
                                       variant="ghost" 
                                       className="h-7 px-2 text-blue-600" 
-                                      onClick={() => handleRefreshPdm(m.id, m.name)}
-                                      disabled={refreshingMunicipalityId === m.id}
+                                      onClick={() => openScrapingConfigModal(m)}
                                     >
-                                      {refreshingMunicipalityId === m.id ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <Bot className="w-3 h-3" />
-                                      )}
+                                      <Bot className="w-3 h-3" />
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>Auto-discover PDM document using AI</p>
+                                    <p>Configure AI-powered PDM discovery</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -819,6 +899,179 @@ export default function AdminMunicipalitiesPage() {
                   {editingDocId ? 'Update' : 'Add'} Document
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Scraping Configuration Dialog */}
+      <Dialog open={scrapingConfigOpen} onOpenChange={setScrapingConfigOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Configure AI PDM Discovery</DialogTitle>
+            <DialogDescription>
+              Configure parameters for automated PDM discovery for <strong>{scrapingMunicipality?.name}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Max Iterations */}
+            <div className="grid gap-2">
+              <Label htmlFor="maxIterations">
+                Max Iterations
+                <span className="ml-2 text-xs text-gray-500">(Allowed: 1-10)</span>
+              </Label>
+              <Input
+                id="maxIterations"
+                type="number"
+                min={1}
+                max={10}
+                value={scrapingMaxIterations}
+                onChange={(e) => setScrapingMaxIterations(parseInt(e.target.value) || 3)}
+                disabled={scrapingInProgress}
+              />
+              <p className="text-xs text-gray-500">
+                Number of search iterations to perform. Higher values = more thorough search.
+              </p>
+            </div>
+
+            {/* Confidence Threshold */}
+            <div className="grid gap-2">
+              <Label htmlFor="confidenceThreshold">
+                Confidence Threshold
+                <span className="ml-2 text-xs text-gray-500">(Allowed: 0.0-1.0)</span>
+              </Label>
+              <Input
+                id="confidenceThreshold"
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={scrapingConfidenceThreshold}
+                onChange={(e) => setScrapingConfidenceThreshold(parseFloat(e.target.value) || 0.80)}
+                disabled={scrapingInProgress}
+              />
+              <p className="text-xs text-gray-500">
+                Minimum confidence score required (0-1). Recommended: 0.70-0.85
+              </p>
+            </div>
+
+            {/* Process for RAG Option */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+              <input
+                type="checkbox"
+                id="scrapingProcessForRag"
+                checked={scrapingProcessForRag}
+                onChange={(e) => setScrapingProcessForRag(e.target.checked)}
+                disabled={scrapingInProgress}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <label htmlFor="scrapingProcessForRag" className="text-sm font-medium text-gray-900 cursor-pointer flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-blue-500" />
+                  Process for AI/RAG after discovery
+                </label>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Automatically convert PDF to JSON and generate embeddings after successful discovery
+                </p>
+              </div>
+            </div>
+
+            {/* Execute Button */}
+            {scrapingResult.status === 'idle' && (
+              <Button
+                onClick={executeScrapingWithConfig}
+                disabled={scrapingInProgress}
+                className="w-full"
+              >
+                {scrapingInProgress ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <Bot className="w-4 h-4 mr-2" />
+                    Start AI Discovery
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Scraping Result */}
+            {scrapingResult.status === 'success' && (
+              <div className="grid gap-3">
+                <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-green-900">{scrapingResult.message}</p>
+                    {scrapingResult.url && (
+                      <a 
+                        href={scrapingResult.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-xs text-green-700 hover:underline block mt-1 break-all"
+                      >
+                        {scrapingResult.url}
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {scrapingProcessForRag && processingStatus !== 'idle' && (
+                  <div className={`flex items-center gap-2 p-3 rounded-lg border ${
+                    processingStatus === 'processing' ? 'bg-blue-50 border-blue-200' :
+                    processingStatus === 'success' ? 'bg-green-50 border-green-200' :
+                    'bg-red-50 border-red-200'
+                  }`}>
+                    {processingStatus === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                    {processingStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                    {processingStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                    <span className={`text-sm ${
+                      processingStatus === 'processing' ? 'text-blue-700' :
+                      processingStatus === 'success' ? 'text-green-700' :
+                      'text-red-700'
+                    }`}>
+                      {processingMessage}
+                    </span>
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  onClick={executeScrapingWithConfig}
+                  disabled={scrapingInProgress}
+                  className="w-full"
+                >
+                  <RefreshCw className="w-3 h-3 mr-2" />
+                  Search Again
+                </Button>
+              </div>
+            )}
+
+            {scrapingResult.status === 'error' && (
+              <div className="grid gap-3">
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                  <p className="text-sm text-red-700">{scrapingResult.message}</p>
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={executeScrapingWithConfig}
+                  disabled={scrapingInProgress}
+                  className="w-full"
+                >
+                  <RefreshCw className="w-3 h-3 mr-2" />
+                  Try Again
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={resetScrapingConfig}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
