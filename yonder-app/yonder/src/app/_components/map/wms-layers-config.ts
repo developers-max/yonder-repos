@@ -348,15 +348,23 @@ export function getAvailableLayers(country: 'PT' | 'ES'): WMSLayerConfig[] {
   return Object.values(WMS_LAYERS[country]);
 }
 
+// Get WMS layers for a country (includes plots pseudo-layer)
+export function getWMSLayers(country: 'PT' | 'ES'): Record<string, WMSLayerConfig> {
+  const baseLayers = country === 'PT' ? PT_WMS_LAYERS : ES_WMS_LAYERS;
+  // Add plots layer at the beginning
+  return { plots: { ...PLOTS_LAYER_CONFIG, country }, ...baseLayers };
+}
+
 // Get a specific layer configuration
 export function getLayerConfig(country: 'PT' | 'ES', layerId: string): WMSLayerConfig | undefined {
   return WMS_LAYERS[country][layerId];
 }
 
 // Default enabled layers
+// 'plots' is a pseudo-layer for the search map to toggle plot markers
 export const DEFAULT_ENABLED_LAYERS: Record<'PT' | 'ES', string[]> = {
-  PT: ['plots'], // Only Land for Sale enabled by default
-  ES: ['plots'],
+  PT: ['plots'], // Only plot markers enabled by default
+  ES: ['plots'], // Only plot markers enabled by default
 };
 
 // Country bounding boxes (approximate)
