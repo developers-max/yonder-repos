@@ -717,6 +717,28 @@ export const adminRouter = router({
       };
     }),
 
+  // Get distinct countries for realtors dropdown
+  getRealtorCountries: protectedProcedure.query(async ({ ctx }) => {
+    await requireAdmin(ctx.user.id);
+
+    function hasRows<T>(v: unknown): v is { rows: T[] } {
+      return typeof v === 'object' && v !== null && 'rows' in v;
+    }
+
+    const res = await db.execute(sql`
+      SELECT DISTINCT country
+      FROM realtors
+      WHERE country IS NOT NULL AND country != ''
+      ORDER BY country ASC
+    `);
+
+    const countries: string[] = hasRows<{ country: string }>(res)
+      ? res.rows.map((r: { country: string }) => r.country)
+      : [];
+
+    return { countries };
+  }),
+
   // List realtor companies (admin only)
   getRealtors: protectedProcedure
     .input(
@@ -725,12 +747,14 @@ export const adminRouter = router({
         limit: z.number().default(20),
         search: z.string().optional(),
         country: z.string().optional(),
+        sortBy: z.enum(['company_name', 'plot_count']).optional().default('company_name'),
+        sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
       })
     )
     .query(async ({ ctx, input }) => {
       await requireAdmin(ctx.user.id);
 
-      const { page, limit, search, country } = input;
+      const { page, limit, search, country, sortBy, sortOrder } = input;
       const offset = (page - 1) * limit;
 
       type RealtorRow = {
@@ -740,6 +764,7 @@ export const adminRouter = router({
         website_url: string;
         email: string | null;
         telephone: string | null;
+        plot_count: number;
       };
 
       // Helper to normalize db.execute return shape
@@ -747,22 +772,38 @@ export const adminRouter = router({
         return typeof v === 'object' && v !== null && 'rows' in v;
       }
 
+      // Build ORDER BY clause
+      const orderByColumn = sortBy === 'plot_count' ? 'plot_count' : 'company_name';
+      const orderDirection = sortOrder === 'desc' ? 'DESC' : 'ASC';
+
       const itemsRes = await db.execute(sql<RealtorRow>`
-        SELECT id, company_name, country, website_url, email, telephone
-        FROM realtors
+        SELECT 
+          r.id, 
+          r.company_name, 
+          r.country, 
+          r.website_url, 
+          r.email, 
+          r.telephone,
+          COALESCE(pc.plot_count, 0)::int AS plot_count
+        FROM realtors r
+        LEFT JOIN (
+          SELECT realtor_id, COUNT(DISTINCT plot_id)::int AS plot_count
+          FROM plots_stage_realtors
+          GROUP BY realtor_id
+        ) pc ON pc.realtor_id = r.id
         WHERE 1=1
-        ${search ? sql` AND (company_name ILIKE '%' || ${search} || '%' OR email ILIKE '%' || ${search} || '%' OR telephone ILIKE '%' || ${search} || '%' OR website_url ILIKE '%' || ${search} || '%')` : sql``}
-        ${country ? sql` AND country = ${country}` : sql``}
-        ORDER BY company_name ASC
+        ${search ? sql` AND (r.company_name ILIKE '%' || ${search} || '%' OR r.email ILIKE '%' || ${search} || '%' OR r.telephone ILIKE '%' || ${search} || '%' OR r.website_url ILIKE '%' || ${search} || '%')` : sql``}
+        ${country ? sql` AND r.country = ${country}` : sql``}
+        ORDER BY ${sql.raw(orderByColumn)} ${sql.raw(orderDirection)}, r.company_name ASC
         LIMIT ${limit} OFFSET ${offset}
       `);
 
       const countRes = await db.execute(sql<{ count: number }>`
         SELECT COUNT(*)::int AS count
-        FROM realtors
+        FROM realtors r
         WHERE 1=1
-        ${search ? sql` AND (company_name ILIKE '%' || ${search} || '%' OR email ILIKE '%' || ${search} || '%' OR telephone ILIKE '%' || ${search} || '%' OR website_url ILIKE '%' || ${search} || '%')` : sql``}
-        ${country ? sql` AND country = ${country}` : sql``}
+        ${search ? sql` AND (r.company_name ILIKE '%' || ${search} || '%' OR r.email ILIKE '%' || ${search} || '%' OR r.telephone ILIKE '%' || ${search} || '%' OR r.website_url ILIKE '%' || ${search} || '%')` : sql``}
+        ${country ? sql` AND r.country = ${country}` : sql``}
       `);
 
       const items: RealtorRow[] = hasRows<RealtorRow>(itemsRes)
@@ -783,6 +824,61 @@ export const adminRouter = router({
           hasPrevPage: page > 1,
         },
       };
+    }),
+
+  // Export all realtors with plot count (for CSV export)
+  exportRealtors: protectedProcedure
+    .input(
+      z.object({
+        search: z.string().optional(),
+        country: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      await requireAdmin(ctx.user.id);
+
+      const { search, country } = input;
+
+      type RealtorExportRow = {
+        id: number;
+        company_name: string;
+        country: string;
+        website_url: string;
+        email: string | null;
+        telephone: string | null;
+        plot_count: number;
+      };
+
+      function hasRows<T>(v: unknown): v is { rows: T[] } {
+        return typeof v === 'object' && v !== null && 'rows' in v;
+      }
+
+      const res = await db.execute(sql<RealtorExportRow>`
+        SELECT 
+          r.id, 
+          r.company_name, 
+          r.country, 
+          r.website_url, 
+          r.email, 
+          r.telephone,
+          COALESCE(pc.plot_count, 0)::int AS plot_count
+        FROM realtors r
+        LEFT JOIN (
+          SELECT realtor_id, COUNT(DISTINCT plot_id)::int AS plot_count
+          FROM plots_stage_realtors
+          GROUP BY realtor_id
+        ) pc ON pc.realtor_id = r.id
+        WHERE 1=1
+        ${search ? sql` AND (r.company_name ILIKE '%' || ${search} || '%' OR r.email ILIKE '%' || ${search} || '%' OR r.telephone ILIKE '%' || ${search} || '%' OR r.website_url ILIKE '%' || ${search} || '%')` : sql``}
+        ${country ? sql` AND r.country = ${country}` : sql``}
+        ORDER BY plot_count DESC, r.company_name ASC
+      `);
+
+      const items: RealtorExportRow[] = hasRows<RealtorExportRow>(res)
+        ? res.rows
+        : ((res as unknown) as RealtorExportRow[]) ?? [];
+
+      return { realtors: items };
     }),
 
   // Admin can view "realtor panel" data for a given realtor by email or domain

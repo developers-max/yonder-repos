@@ -6,7 +6,8 @@ import { Card, CardContent } from '@/app/_components/ui/card';
 import { Input } from '@/app/_components/ui/input';
 import { Button } from '@/app/_components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/app/_components/ui/table';
-import { Loader2, Building2, Search, Globe2 } from 'lucide-react';
+import { Loader2, Building2, Search, Globe2, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/_components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/app/_components/ui/dialog';
 
 export default function AdminRealtorsPage() {
@@ -15,13 +16,63 @@ export default function AdminRealtorsPage() {
   const [page, setPage] = useState(1);
   const [panelOpen, setPanelOpen] = useState(false);
   const [selected, setSelected] = useState<{ company: string; realtorEmail?: string; emailDomain?: string } | null>(null);
+  const [sortBy, setSortBy] = useState<'company_name' | 'plot_count'>('company_name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [isExporting, setIsExporting] = useState(false);
   const limit = 20;
+
+  const { data: countriesData } = trpc.admin.getRealtorCountries.useQuery();
+
+  const exportQuery = trpc.admin.exportRealtors.useQuery(
+    { search: search || undefined, country: country || undefined },
+    { enabled: false }
+  );
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const result = await exportQuery.refetch();
+      if (result.data?.realtors) {
+        const rows = result.data.realtors;
+        const headers = ['ID', 'Company Name', 'Country', 'Website', 'Email', 'Telephone', 'Plot Count'];
+        const csvContent = [
+          headers.join(','),
+          ...rows.map((r) => [
+            r.id,
+            `"${(r.company_name || '').replace(/"/g, '""')}"`,
+            `"${(r.country || '').replace(/"/g, '""')}"`,
+            `"${(r.website_url || '').replace(/"/g, '""')}"`,
+            `"${(r.email || '').replace(/"/g, '""')}"`,
+            `"${(r.telephone || '').replace(/"/g, '""')}"`,
+            r.plot_count,
+          ].join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const filename = country ? `realtors-${country}-${new Date().toISOString().split('T')[0]}.csv` : `realtors-${new Date().toISOString().split('T')[0]}.csv`;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const { data, isLoading, isRefetching, refetch } = trpc.admin.getRealtors.useQuery({
     page,
     limit,
     search: search || undefined,
     country: country || undefined,
+    sortBy,
+    sortOrder,
   });
 
   const realtors = data?.realtors || [];
@@ -85,15 +136,26 @@ export default function AdminRealtorsPage() {
               />
             </div>
 
-            <div className="relative w-full max-w-xs">
-              <Globe2 className="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
-              <Input
-                placeholder="Country (optional)"
-                className="pl-8"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-              />
-            </div>
+            <Select
+              value={country || 'all'}
+              onValueChange={(value) => {
+                setCountry(value === 'all' ? '' : value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full max-w-xs">
+                <Globe2 className="w-4 h-4 text-gray-400 mr-2" />
+                <SelectValue placeholder="All Countries" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Countries</SelectItem>
+                {countriesData?.countries.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <Button
               variant="outline"
@@ -112,6 +174,24 @@ export default function AdminRealtorsPage() {
                 'Search'
               )}
             </Button>
+
+            <Button
+              variant="outline"
+              onClick={handleExportCsv}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Export CSV
+                </>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -128,18 +208,59 @@ export default function AdminRealtorsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Company</TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50 select-none"
+                  onClick={() => {
+                    if (sortBy === 'company_name') {
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortBy('company_name');
+                      setSortOrder('asc');
+                    }
+                    setPage(1);
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    Company
+                    {sortBy === 'company_name' ? (
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                    )}
+                  </div>
+                </TableHead>
                 <TableHead>Country</TableHead>
                 <TableHead>Website</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Telephone</TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-50 select-none"
+                  onClick={() => {
+                    if (sortBy === 'plot_count') {
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortBy('plot_count');
+                      setSortOrder('desc');
+                    }
+                    setPage(1);
+                  }}
+                >
+                  <div className="flex items-center gap-1">
+                    # Plots
+                    {sortBy === 'plot_count' ? (
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                    )}
+                  </div>
+                </TableHead>
                 <TableHead className="w-[1%] whitespace-nowrap">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  <TableCell colSpan={7} className="px-4 py-8 text-center text-gray-500">
                     <div className="inline-flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" /> Loading realtors...
                     </div>
@@ -147,7 +268,7 @@ export default function AdminRealtorsPage() {
                 </TableRow>
               ) : realtors.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  <TableCell colSpan={7} className="px-4 py-8 text-center text-gray-500">
                     No realtor companies found
                   </TableCell>
                 </TableRow>
@@ -172,6 +293,9 @@ export default function AdminRealtorsPage() {
                     </TableCell>
                     <TableCell className="text-gray-700">{r.email || <span className="text-gray-400">-</span>}</TableCell>
                     <TableCell className="text-gray-700">{r.telephone || <span className="text-gray-400">-</span>}</TableCell>
+                    <TableCell className="text-gray-700 font-medium">
+                      {r.plot_count > 0 ? r.plot_count.toLocaleString() : <span className="text-gray-400">0</span>}
+                    </TableCell>
                     <TableCell>
                       <Button size="sm" variant="outline" onClick={() => openRealtorPanel(r)}>
                         Open Realtor Panel
