@@ -24,7 +24,7 @@ const LAYERS_INTER_PLOT_DELAY_MS = Number.isFinite(LAYERS_INTER_PLOT_DELAY_MS_EN
 
 const LAYERS_CONCURRENCY_ENV = parseInt(process.env.LAYERS_CONCURRENCY || '', 10);
 const LAYERS_CONCURRENCY = Number.isFinite(LAYERS_CONCURRENCY_ENV)
-  ? Math.min(Math.max(LAYERS_CONCURRENCY_ENV, 1), 3)
+  ? Math.min(Math.max(LAYERS_CONCURRENCY_ENV, 1), 100)
   : 2;
 
 const LAYERS_FORCE_REFRESH = (process.env.LAYERS_FORCE_REFRESH || '').toLowerCase() === 'true';

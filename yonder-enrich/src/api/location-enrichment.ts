@@ -9,6 +9,7 @@ import { getPortugalCadastralInfo } from '../enrichments/portugal-cadastre/portu
 import { getPortugalZoningData, PortugalZoningResult } from './helpers/crus-helpers';
 import { getGermanZoningForPoint } from '../enrichments/germany-zoning/germany_lookup';
 import { translateZoningLabel } from '../llm/translate';
+import { queryAllLayers, LayerQueryResponse } from '../layers';
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ export interface LocationEnrichmentResponse {
   country?: string;
   municipality?: MunicipalityInfo;
   amenities?: EnrichmentData;
+  layers?: any;
   zoning?: any;
   cadastre?: any;
   enrichment_data?: any; // Complete enrichment data object
@@ -55,6 +57,94 @@ function mergeEnrichmentData(existing: any, newData: any, key: string): any {
   const merged = { ...existing };
   merged[key] = newData;
   return merged;
+}
+
+/**
+ * Transform LayerQueryResponse into a structured enrichment object
+ */
+function transformLayersToEnrichment(response: LayerQueryResponse): Record<string, unknown> {
+  const enrichment: Record<string, unknown> = {
+    timestamp: response.timestamp,
+    coordinates: response.coordinates,
+    country: response.country,
+  };
+
+  if (response.areaM2) {
+    enrichment.areaM2 = response.areaM2;
+  }
+
+  if (response.boundingBox) {
+    enrichment.boundingBox = response.boundingBox;
+  }
+
+  const layersByCategory: Record<string, unknown[]> = {};
+
+  for (const layer of response.layers) {
+    if (!layer.found && !layer.error) continue;
+
+    const layerData: Record<string, unknown> = {
+      layerId: layer.layerId,
+      layerName: layer.layerName,
+      found: layer.found,
+    };
+
+    if (layer.data) {
+      layerData.data = layer.data;
+    }
+
+    if (layer.error) {
+      layerData.error = layer.error;
+    }
+
+    const category = categorizeLayer(layer.layerId);
+    if (!layersByCategory[category]) {
+      layersByCategory[category] = [];
+    }
+    layersByCategory[category].push(layerData);
+  }
+
+  enrichment.layersByCategory = layersByCategory;
+  enrichment.layersRaw = response.layers;
+
+  return enrichment;
+}
+
+/**
+ * Categorize layer by its ID prefix
+ */
+function categorizeLayer(layerId: string): string {
+  if (layerId.startsWith('pt-distrito') || layerId.startsWith('pt-municipio') || 
+      layerId.startsWith('pt-freguesia') || layerId.startsWith('pt-nuts3')) {
+    return 'administrative';
+  }
+  
+  if (layerId.startsWith('pt-cadastro') || layerId.startsWith('es-cadastro')) {
+    return 'cadastre';
+  }
+  
+  if (layerId.startsWith('pt-crus') || layerId.startsWith('pt-ren') || 
+      layerId.startsWith('pt-ran') || layerId.startsWith('es-zoning')) {
+    return 'zoning';
+  }
+  
+  if (layerId.startsWith('pt-cos') || layerId.startsWith('pt-clc') || 
+      layerId.startsWith('pt-built-up')) {
+    return 'landuse';
+  }
+  
+  if (layerId === 'elevation') {
+    return 'elevation';
+  }
+  
+  if (layerId === 'pt-municipality-db') {
+    return 'administrative';
+  }
+
+  if (layerId.startsWith('es-')) {
+    return 'spain';
+  }
+  
+  return 'other';
 }
 
 /**
@@ -129,7 +219,33 @@ export async function enrichLocation(
       response.enrichments_failed.push('municipalities');
     }
 
-    // 2. AMENITIES ENRICHMENT (ALWAYS RUN)
+    // 2. LAYERS ENRICHMENT (run for PT and ES if country is known)
+    if (response.country === 'PT' || response.country === 'ES') {
+      console.log(`Running layers enrichment for ${response.country}...`);
+      try {
+        const layerResponse = await queryAllLayers({
+          lat: latitude,
+          lng: longitude,
+          country: response.country as 'PT' | 'ES',
+        });
+
+        const layersEnrichment = transformLayersToEnrichment(layerResponse);
+        const foundLayers = layerResponse.layers.filter(l => l.found);
+        
+        response.layers = layersEnrichment;
+        enrichmentData = mergeEnrichmentData(enrichmentData, layersEnrichment, 'layers');
+        response.enrichments_run.push('layers');
+        console.log(`✓ Layers enrichment complete (${foundLayers.length}/${layerResponse.layers.length} layers found)`);
+      } catch (error) {
+        console.error('Layers enrichment failed:', error);
+        response.enrichments_failed.push('layers');
+      }
+    } else {
+      response.enrichments_skipped.push('layers');
+      console.log('○ Layers enrichment skipped (country not PT or ES)');
+    }
+
+    // 3. AMENITIES ENRICHMENT (ALWAYS RUN)
     console.log('Running amenities enrichment...');
     try {
       const plot: Plot = { id: 'temp', latitude, longitude };
@@ -144,7 +260,7 @@ export async function enrichLocation(
       response.enrichments_failed.push('amenities');
     }
 
-    // 3. COUNTRY-SPECIFIC ENRICHMENTS
+    // 4. COUNTRY-SPECIFIC ENRICHMENTS
     const country = response.country;
 
     if (country === 'PT') {
@@ -346,7 +462,7 @@ export async function enrichLocation(
     // Store complete enrichment data in response
     response.enrichment_data = enrichmentData;
 
-    // 4. STORE RESULTS TO DATABASE (if requested)
+    // 5. STORE RESULTS TO DATABASE (if requested)
     if (client && store_results && plot_id) {
       console.log(`Storing enrichment results to database for plot ${plot_id}...`);
       try {

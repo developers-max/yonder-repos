@@ -48,6 +48,17 @@ export type PlotDetailsResult = ToolResult<{
     mapViewerUrl: string | null;
     hasData: boolean;
   };
+  layers: {
+    country: string | null;
+    areaM2: number | null;
+    layersByCategory: Record<string, unknown[]> | null;
+    administrativeLayers: unknown[];
+    cadastreLayers: unknown[];
+    zoningLayers: unknown[];
+    landuseLayers: unknown[];
+    elevationLayers: unknown[];
+    hasData: boolean;
+  };
   analysis: {
     pricing: {
       total: number;
@@ -126,10 +137,25 @@ export const getPlotDetailsTool = tool({
         hasData: !!cadastralData,
       };
       
+      // Extract layer enrichment information
+      const layersData = enrichmentData?.layers;
+      const layersByCategory = layersData?.layersByCategory as Record<string, unknown[]> | undefined;
+      const layers = {
+        country: layersData?.country || null,
+        areaM2: layersData?.areaM2 || null,
+        layersByCategory: layersByCategory || null,
+        administrativeLayers: layersByCategory?.administrative || [],
+        cadastreLayers: layersByCategory?.cadastre || [],
+        zoningLayers: layersByCategory?.zoning || [],
+        landuseLayers: layersByCategory?.landuse || [],
+        elevationLayers: layersByCategory?.elevation || [],
+        hasData: !!layersData,
+      };
+      
       const lat = Number(plotData.latitude);
       const lng = Number(plotData.longitude);
       
-      // Build assistant message with zoning/cadastral info
+      // Build assistant message with zoning/cadastral/layer info
       let assistantMessage = `Retrieved details for plot ${plotId}: €${plotData.price.toLocaleString()}${plotData.size ? `, ${plotData.size.toLocaleString()}m²` : ''} at coordinates ${lat.toFixed(4)}, ${lng.toFixed(4)}.`;
       
       if (cadastral.hasData) {
@@ -144,7 +170,12 @@ export const getPlotDetailsTool = tool({
         assistantMessage += ` Municipality: ${municipalityInfo.name} (database ID: ${municipalityInfo.databaseId}, country: ${municipalityInfo.country}).`;
       }
       
-      assistantMessage += ' You can analyze pricing, discuss location/amenities, zoning regulations, cadastral details, or guide through next steps.';
+      if (layers.hasData) {
+        const layerCount = Object.values(layers.layersByCategory || {}).reduce((sum, arr) => sum + arr.length, 0);
+        assistantMessage += ` Layer data available: ${layerCount} layers across ${Object.keys(layers.layersByCategory || {}).length} categories${layers.areaM2 ? `, parcel area: ${layers.areaM2.toFixed(0)}m²` : ''}.`;
+      }
+      
+      assistantMessage += ' You can analyze pricing, discuss location/amenities, zoning regulations, cadastral details, layer data, or guide through next steps.';
       
       const result: PlotDetailsResult = {
         data: {
@@ -153,6 +184,7 @@ export const getPlotDetailsTool = tool({
           municipality: municipalityInfo,
           zoning,
           cadastral,
+          layers,
           analysis: {
             pricing : generatePricingAnalysis(plotData)
           },
@@ -164,6 +196,7 @@ export const getPlotDetailsTool = tool({
           { id: 'analyze_pricing', action: 'Analyze pricing and value proposition' },
           { id: 'discuss_zoning', action: zoning.hasData ? `Explain zoning classification: ${zoning.label || zoning.labelEn || 'Available'}` : 'Discuss zoning regulations' },
           { id: 'review_cadastral', action: cadastral.hasData ? `Review cadastral data: Ref ${cadastral.reference}` : 'Check cadastral information' },
+          { id: 'review_layers', action: layers.hasData ? `Analyze layer data (${Object.keys(layers.layersByCategory || {}).length} categories available)` : 'Check geographic layer information' },
           { id: 'discuss_location', action: 'Discuss location and accessibility' },
           { id: 'review_amenities', action: 'Review nearby amenities and distances' },
           { id: 'ask_municipal_planning', action: cadastral.municipality ? `Query planning regulations for ${cadastral.municipality}` : 'Get municipal planning information' },

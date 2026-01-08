@@ -8,6 +8,7 @@ import * as portugalCadastre from '../../src/enrichments/portugal-cadastre/portu
 import * as crusHelpers from '../../src/api/helpers/crus-helpers';
 import * as germanyZoning from '../../src/enrichments/germany-zoning/germany_lookup';
 import * as translateModule from '../../src/llm/translate';
+import * as layersModule from '../../src/layers';
 
 // Mock all dependencies
 jest.mock('pg');
@@ -19,6 +20,7 @@ jest.mock('../../src/enrichments/portugal-cadastre/portugal_cadastre_lookup');
 jest.mock('../../src/api/helpers/crus-helpers');
 jest.mock('../../src/enrichments/germany-zoning/germany_lookup');
 jest.mock('../../src/llm/translate');
+jest.mock('../../src/layers');
 
 describe('Location Enrichment', () => {
   let mockClient: any;
@@ -66,6 +68,36 @@ describe('Location Enrichment', () => {
       schools: 5,
       restaurants: 10,
     });
+
+    // Setup default mock for layers enrichment
+    (layersModule.queryAllLayers as jest.Mock).mockResolvedValue({
+      timestamp: new Date().toISOString(),
+      coordinates: { lat: 38.7223, lng: -9.1393 },
+      country: 'PT',
+      layers: [
+        {
+          layerId: 'pt-distrito',
+          layerName: 'Distrito',
+          found: true,
+          data: { distrito: 'Lisboa' }
+        },
+        {
+          layerId: 'pt-municipio',
+          layerName: 'Município',
+          found: true,
+          data: { municipio: 'Lisboa' }
+        },
+        {
+          layerId: 'pt-cadastro',
+          layerName: 'Cadastro',
+          found: true,
+          data: { reference: 'PT-12345', areaM2: 500 }
+        }
+      ]
+    });
+
+    // Setup default mock for Portugal zoning (combines CRUS, COS2023, parish)
+    (crusHelpers.getPortugalZoningData as jest.Mock).mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -133,9 +165,12 @@ describe('Location Enrichment', () => {
     });
 
     it('should run CRUS zoning for Portugal', async () => {
-      (crusHelpers.getCRUSZoningForPoint as jest.Mock).mockResolvedValue({
+      (crusHelpers.getPortugalZoningData as jest.Mock).mockResolvedValue({
+        crus: {
+          designation: 'Urbano',
+          source: 'DGT CRUS',
+        },
         label: 'Urbano',
-        source: 'DGT CRUS',
       });
 
       const request: LocationEnrichmentRequest = {
@@ -146,8 +181,8 @@ describe('Location Enrichment', () => {
 
       const result = await enrichLocation(request);
 
-      expect(crusHelpers.getCRUSZoningForPoint).toHaveBeenCalledWith(38.7223, -9.1393);
-      expect(result.enrichments_run).toContain('crus-zoning');
+      expect(crusHelpers.getPortugalZoningData).toHaveBeenCalledWith(38.7223, -9.1393, null);
+      expect(result.enrichments_run).toContain('portugal-zoning');
       expect(result.zoning).toBeDefined();
       expect(result.zoning.label).toBe('Urbano');
     });
@@ -166,13 +201,13 @@ describe('Location Enrichment', () => {
 
       const result = await enrichLocation(request);
 
-      expect(portugalCadastre.getPortugalCadastralInfo).toHaveBeenCalledWith(38.7223, -9.1393);
+      expect(portugalCadastre.getPortugalCadastralInfo).toHaveBeenCalledWith(-9.1393, 38.7223);
       expect(result.enrichments_run).toContain('portugal-cadastre');
       expect(result.cadastre).toBeDefined();
     });
 
     it('should skip CRUS zoning if no data found', async () => {
-      (crusHelpers.getCRUSZoningForPoint as jest.Mock).mockResolvedValue(null);
+      (crusHelpers.getPortugalZoningData as jest.Mock).mockResolvedValue(null);
 
       const request: LocationEnrichmentRequest = {
         latitude: 38.7223,
@@ -182,11 +217,11 @@ describe('Location Enrichment', () => {
 
       const result = await enrichLocation(request);
 
-      expect(result.enrichments_skipped).toContain('crus-zoning');
+      expect(result.enrichments_skipped).toContain('portugal-zoning');
     });
 
     it('should mark CRUS zoning as failed on error', async () => {
-      (crusHelpers.getCRUSZoningForPoint as jest.Mock).mockRejectedValue(
+      (crusHelpers.getPortugalZoningData as jest.Mock).mockRejectedValue(
         new Error('Service unavailable')
       );
 
@@ -198,7 +233,7 @@ describe('Location Enrichment', () => {
 
       const result = await enrichLocation(request);
 
-      expect(result.enrichments_failed).toContain('crus-zoning');
+      expect(result.enrichments_failed).toContain('portugal-zoning');
     });
   });
 
@@ -225,7 +260,7 @@ describe('Location Enrichment', () => {
 
       const result = await enrichLocation(request);
 
-      expect(spainZoning.getSpanishZoningForPoint).toHaveBeenCalledWith(41.3851, 2.1734);
+      expect(spainZoning.getSpanishZoningForPoint).toHaveBeenCalledWith(2.1734, 41.3851);
       expect(result.enrichments_run).toContain('spain-zoning');
       expect(result.zoning).toBeDefined();
     });
@@ -244,7 +279,7 @@ describe('Location Enrichment', () => {
 
       const result = await enrichLocation(request);
 
-      expect(spanishCadastre.getSpanishCadastralInfo).toHaveBeenCalledWith(41.3851, 2.1734);
+      expect(spanishCadastre.getSpanishCadastralInfo).toHaveBeenCalledWith(2.1734, 41.3851);
       expect(result.enrichments_run).toContain('spain-cadastre');
       expect(result.cadastre).toBeDefined();
     });
@@ -287,7 +322,7 @@ describe('Location Enrichment', () => {
 
       const result = await enrichLocation(request);
 
-      expect(germanyZoning.getGermanZoningForPoint).toHaveBeenCalledWith(52.5200, 13.4050);
+      expect(germanyZoning.getGermanZoningForPoint).toHaveBeenCalledWith(13.4050, 52.5200);
       expect(result.enrichments_run).toContain('germany-zoning');
       expect(result.zoning).toBeDefined();
     });
@@ -315,9 +350,12 @@ describe('Location Enrichment', () => {
         country: 'PT',
       });
 
-      (crusHelpers.getCRUSZoningForPoint as jest.Mock).mockResolvedValue({
+      (crusHelpers.getPortugalZoningData as jest.Mock).mockResolvedValue({
+        crus: {
+          designation: 'Espaços Urbanos',
+          source: 'DGT CRUS',
+        },
         label: 'Espaços Urbanos',
-        source: 'DGT CRUS',
       });
 
       (translateModule.translateZoningLabel as jest.Mock).mockResolvedValue({
@@ -347,8 +385,8 @@ describe('Location Enrichment', () => {
 
       expect(result.zoning.label).toBe('Urban Spaces');
       expect(result.zoning.label_original).toBe('Espaços Urbanos');
-      expect(result.zoning.translated).toBe(true);
-      expect(result.zoning.translation_confidence).toBe(0.95);
+      expect(result.zoning.crus.translated).toBe(true);
+      expect(result.zoning.crus.translation_confidence).toBe(0.95);
     });
 
     it('should translate Spain zoning labels when enabled', async () => {
@@ -386,7 +424,10 @@ describe('Location Enrichment', () => {
         country: 'PT',
       });
 
-      (crusHelpers.getCRUSZoningForPoint as jest.Mock).mockResolvedValue({
+      (crusHelpers.getPortugalZoningData as jest.Mock).mockResolvedValue({
+        crus: {
+          designation: 'Espaços Urbanos',
+        },
         label: 'Espaços Urbanos',
       });
 
@@ -587,8 +628,8 @@ describe('Location Enrichment', () => {
         country: 'PT',
       });
 
-      (crusHelpers.getCRUSZoningForPoint as jest.Mock).mockRejectedValue(
-        new Error('CRUS service down')
+      (crusHelpers.getPortugalZoningData as jest.Mock).mockRejectedValue(
+        new Error('Portugal zoning service down')
       );
 
       const request: LocationEnrichmentRequest = {
@@ -601,7 +642,7 @@ describe('Location Enrichment', () => {
 
       // Should still have amenities even though CRUS failed
       expect(result.enrichments_run).toContain('amenities');
-      expect(result.enrichments_failed).toContain('crus-zoning');
+      expect(result.enrichments_failed).toContain('portugal-zoning');
     });
 
     it('should return error in response on unhandled exceptions', async () => {
@@ -634,7 +675,10 @@ describe('Location Enrichment', () => {
         country: 'PT',
       });
 
-      (crusHelpers.getCRUSZoningForPoint as jest.Mock).mockResolvedValue({
+      (crusHelpers.getPortugalZoningData as jest.Mock).mockResolvedValue({
+        crus: {
+          designation: 'Urbano',
+        },
         label: 'Urbano',
       });
 
@@ -662,7 +706,10 @@ describe('Location Enrichment', () => {
         country: 'PT',
       });
 
-      (crusHelpers.getCRUSZoningForPoint as jest.Mock).mockResolvedValue({
+      (crusHelpers.getPortugalZoningData as jest.Mock).mockResolvedValue({
+        crus: {
+          designation: 'Urbano',
+        },
         label: 'Urbano',
       });
 

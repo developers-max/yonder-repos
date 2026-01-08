@@ -85,6 +85,16 @@ export type EnrichmentData = {
       description?: string;
     };
   };
+  // Layer enrichment data
+  layers?: {
+    timestamp?: string;
+    coordinates?: { lat: number; lng: number };
+    country?: string;
+    areaM2?: number;
+    boundingBox?: unknown;
+    layersByCategory?: Record<string, unknown[]>;
+    layersRaw?: unknown[];
+  };
 };
 
 type RealtorForPlot = {
