@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { truncateToSentences, isTruncated } from '@/lib/utils/text-utils';
+import { DescriptionModal } from './description-modal';
 import { trpc } from '@/trpc/client';
 import { useReverseGeocode } from "@/lib/hooks/useReverseGeocode";
 import type { inferRouterOutputs } from '@trpc/server';
@@ -108,6 +110,7 @@ export default function PlotDetails({
   const [activeTab, setActiveTab] = useState<"overview" | "progress">(
     "overview"
   );
+  const [isDescriptionModalOpen, setIsDescriptionModalOpen] = useState(false);
   const {
     data: plot,
     isLoading,
@@ -483,10 +486,17 @@ export default function PlotDetails({
 
                       {/* Description */}
                       {strongPlot.description && (
-                        <div className="max-h-24 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+                        <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                           <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
-                            {String(strongPlot.description)}
+                            {truncateToSentences(String(strongPlot.description), 3)}
+                            {isTruncated(String(strongPlot.description), 3) && '...'}
                           </p>
+                          <button
+                            onClick={() => setIsDescriptionModalOpen(true)}
+                            className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline flex items-center gap-1"
+                          >
+                            {isTruncated(String(strongPlot.description), 3) ? 'Read more & translate' : 'Translate to English'}
+                          </button>
                         </div>
                       )}
 
@@ -1132,6 +1142,15 @@ export default function PlotDetails({
           </div>
         </div>
       </div>
+
+      {/* Description Modal */}
+      {strongPlot.description && (
+        <DescriptionModal
+          isOpen={isDescriptionModalOpen}
+          onClose={() => setIsDescriptionModalOpen(false)}
+          description={String(strongPlot.description)}
+        />
+      )}
     </div>
   );
 }
