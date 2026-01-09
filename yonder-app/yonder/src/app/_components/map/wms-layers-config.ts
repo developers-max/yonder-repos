@@ -177,12 +177,13 @@ export const PT_WMS_LAYERS: Record<string, WMSLayerConfig> = {
   },
 
   // Orthophotos 2018 (aerial imagery)
+  // Note: Proxied due to SSL certificate issues on DGT's teste-ext workspace
   orthos: {
     id: 'orthos',
     name: 'Ortofotomapas (2018)',
     shortName: 'Aerial Photos',
     description: 'High-resolution aerial imagery',
-    url: 'https://geo2.dgterritorio.gov.pt/geoserver/teste-ext/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=Ortos2018-RGB&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
+    url: '/api/wms-proxy?source=pt-orthos&SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=Ortos2018-RGB&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}',
     layers: 'Ortos2018-RGB',
     opacity: 1.0,
     color: '#0ea5e9', // Sky blue
@@ -199,6 +200,7 @@ export const PT_WMS_LAYERS: Record<string, WMSLayerConfig> = {
   // =============================================================================
 
   // REN - Reserva Ecológica Nacional (covers all of Portugal)
+  // WARNING: DGT SNIT service frequently down (HTTP 502) - service may be unreliable
   ren: {
     id: 'ren',
     name: 'REN (Reserva Ecológica)',
@@ -211,9 +213,11 @@ export const PT_WMS_LAYERS: Record<string, WMSLayerConfig> = {
     provider: 'DGT',
     country: 'PT',
     legendUrl: 'https://servicos.dgterritorio.pt/SDISNITWMSSRUP_REN_PT1/service.svc/get?VERSION=1.3.0&REQUEST=getlegendgraphic&SERVICE=WMS&format=image/png&layer=REN_em_Vigor&style=Default',
+    unreliable: true, // DGT SNIT services frequently offline
   },
 
   // RAN - Reserva Agrícola Nacional (covers all of Portugal)
+  // WARNING: DGT SNIT service frequently down (HTTP 502) - service may be unreliable
   ran: {
     id: 'ran',
     name: 'RAN (Reserva Agrícola)',
@@ -226,6 +230,7 @@ export const PT_WMS_LAYERS: Record<string, WMSLayerConfig> = {
     provider: 'DGT',
     country: 'PT',
     legendUrl: 'https://servicos.dgterritorio.pt/SDISNITWMSSRUP_RAN_PT1/service.svc/get?VERSION=1.3.0&REQUEST=getlegendgraphic&SERVICE=WMS&format=image/png&layer=Reserva_Agricola_Nacional&style=Default',
+    unreliable: true, // DGT SNIT services frequently offline
   },
 
 };

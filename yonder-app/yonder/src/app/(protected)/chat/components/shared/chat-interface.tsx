@@ -250,7 +250,12 @@ export default function ChatInterface({
         });
     }
     
-    return suggestions;
+    // Deduplicate by ID
+    const uniqueSuggestions = Array.from(
+      new Map(suggestions.map(s => [s.id, s])).values()
+    );
+    
+    return uniqueSuggestions;
   };
 
   // Handle clean up (new chat)

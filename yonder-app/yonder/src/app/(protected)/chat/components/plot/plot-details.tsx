@@ -689,7 +689,7 @@ export default function PlotDetails({
                     );
                   })()}
 
-                  {/* General Zoning Rules Card - Redesigned Accordion */}
+                  {/* General Zoning Rules Card - Municipality PDM Analysis */}
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border-b border-gray-200">
                       <div className="flex items-start justify-between">

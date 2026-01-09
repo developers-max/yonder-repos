@@ -6,6 +6,7 @@ import { z } from "zod";
 import { extractBuildingRegulations, BuildingRegulationsSchema } from './extract-regulations';
 import { generatePlotDescription } from './generate-description';
 import { extractGeneralZoningRules, GeneralZoningRulesSchema } from './extract-general-zoning';
+import { analyzePlotData, PlotAnalysisSchema } from './analyze-plot-data';
 
 // Type for enrichment data structure
 export type EnrichmentData = {
@@ -84,6 +85,16 @@ export type EnrichmentData = {
       embeddable_html?: string;
       description?: string;
     };
+  };
+  // Layer enrichment data
+  layers?: {
+    timestamp?: string;
+    coordinates?: { lat: number; lng: number };
+    country?: string;
+    areaM2?: number;
+    boundingBox?: unknown;
+    layersByCategory?: Record<string, unknown[]>;
+    layersRaw?: unknown[];
   };
 };
 
@@ -811,5 +822,52 @@ export const plotsRouter = router({
       });
 
       return { description };
+    }),
+
+  // Analyze plot data using GPT-5-nano for dynamic insights
+  analyzePlotData: publicProcedure
+    .input(z.object({ 
+      plotId: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const plot = await db.query.enrichedPlots.findFirst({
+        where: eq(enrichedPlots.id, input.plotId),
+      });
+
+      if (!plot) {
+        throw new Error('Plot not found');
+      }
+
+      // Get municipality data if available
+      let municipalityData: { name: string; district: string | null; country: string | null } | undefined;
+      if (plot.municipalityId) {
+        const municipality = await db.query.municipalities.findFirst({
+          where: eq(municipalities.id, plot.municipalityId),
+        });
+        if (municipality) {
+          municipalityData = {
+            name: municipality.name,
+            district: municipality.district,
+            country: municipality.country,
+          };
+        }
+      }
+
+      // plotReportJson is stored directly in enrichedPlots table
+      const plotReportJson = plot.plotReportJson || null;
+
+      const analysis = await analyzePlotData({
+        plotReportJson,
+        enrichmentData: plot.enrichmentData,
+        municipalityData,
+        plotInfo: {
+          latitude: plot.latitude,
+          longitude: plot.longitude,
+          size: plot.size ? Number(plot.size) : null,
+          price: plot.price ? Number(plot.price) : 0,
+        },
+      });
+
+      return analysis;
     }),
 }); 
