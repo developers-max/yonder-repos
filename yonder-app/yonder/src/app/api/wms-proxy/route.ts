@@ -10,6 +10,7 @@ const ALLOWED_WMS_SOURCES: Record<string, string> = {
   'pt-cadastro': 'https://cartografia.dgterritorio.gov.pt/wms/Cadastro',
   'pt-ren': 'https://servicos.dgterritorio.pt/SDISNITWMSSRUP_REN_PT1/WMService.aspx',
   'pt-ran': 'https://servicos.dgterritorio.pt/SDISNITWMSSRUP_RAN_PT1/WMService.aspx',
+  'pt-orthos': 'https://geo2.dgterritorio.gov.pt/geoserver/teste-ext/wms',
   // Portugal - geo2 geoserver (supports CORS, but included for completeness)
   'pt-geo2-caop': 'https://geo2.dgterritorio.gov.pt/geoserver/caop_continente/wms',
   'pt-geo2-cos': 'https://geo2.dgterritorio.gov.pt/geoserver/COS2018/wms',
