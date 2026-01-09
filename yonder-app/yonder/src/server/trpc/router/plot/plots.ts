@@ -7,6 +7,7 @@ import { extractBuildingRegulations, BuildingRegulationsSchema } from './extract
 import { generatePlotDescription } from './generate-description';
 import { extractGeneralZoningRules, GeneralZoningRulesSchema } from './extract-general-zoning';
 import { analyzePlotData, PlotAnalysisSchema } from './analyze-plot-data';
+import { translateDescription } from './translate-description';
 
 // Type for enrichment data structure
 export type EnrichmentData = {
@@ -869,5 +870,17 @@ export const plotsRouter = router({
       });
 
       return analysis;
+    }),
+
+  translateDescription: publicProcedure
+    .input(z.object({
+      text: z.string(),
+    }))
+    .output(z.object({
+      translation: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const translation = await translateDescription(input.text);
+      return { translation };
     }),
 }); 

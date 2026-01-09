@@ -123,9 +123,16 @@ Based on ALL this data, extract and analyze:
    - **plotReportJson.risks_constraints.natural_hazards[]**: coastal erosion, flood risk, seismic risk
    - **plotReportJson.physical_environmental.hydrology**: coastline distance, floodplain data, surface water
    - enrichmentData.amenities.coastline, beach distances
-   - enrichmentData.layers.layersRaw - pt-ren/pt-ran status
+   - enrichmentData.layers.layersRaw - check pt-ren/pt-ran entries for timeout errors
    
-   IMPORTANT: If REN/RAN status is "unknown" or null, note it as a critical gap that must be verified. List any coastal safeguard strips or protection zones. Mention natural features (coast, beach, forests) with distances.
+   **IMPORTANT - REN/RAN Timeout Handling:**
+   When REN (Reserva Ecológica Nacional) or RAN (Reserva Agrícola Nacional) show "timeout" errors in the data:
+   - This MOST LIKELY means these protections are NOT present on this plot (timeouts typically occur when no data matches)
+   - Present it as: "REN/RAN protections likely not applicable (query timeout suggests no restrictions present, but recommend verification with municipality)"
+   - DO NOT present it as a critical unknown or data gap
+   - Still recommend user verifies with the Câmara Municipal to confirm absence of restrictions
+   
+   If REN/RAN status is truly "unknown" (null without timeout), then note it as requiring verification. List any coastal safeguard strips or protection zones. Mention natural features (coast, beach, forests) with distances.
 
 6. **Key Insights**: Synthesize the MOST IMPORTANT insights from:
    - **plotReportJson.executive_summary.key_findings.advantages[]**: major benefits (location, amenities, suitability)
